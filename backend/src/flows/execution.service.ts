@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bull';
 import { Model, Types } from 'mongoose';
 import type { Queue } from 'bull';
-import { Flow, FlowNode, NodeType } from './schemas/flow.schema';
+import { Flow, FlowNode, NodeType, FlowDocument } from './schemas/flow.schema';
 import { Execution, ExecutionDocument } from './schemas/execution.schema';
 import { MockServicesService } from '../mock-services/mock-services.service';
 
@@ -12,6 +12,7 @@ export class FlowExecutionService {
   private readonly logger = new Logger(FlowExecutionService.name);
 
   constructor(
+    @InjectModel(Flow.name) private flowModel: Model<FlowDocument>,
     @InjectModel(Execution.name) private executionModel: Model<ExecutionDocument>,
     @InjectQueue('flow-delays') private delayQueue: Queue,
     private mockServicesService: MockServicesService,
@@ -87,8 +88,8 @@ export class FlowExecutionService {
       throw new Error('Execution not found');
     }
 
-    // Get the flow
-    const flow = await this.executionModel.findById(execution.flowId).exec();
+    // Get the flow using the Flow model
+    const flow = await this.flowModel.findById(execution.flowId);
     if (!flow) {
       throw new Error('Flow not found');
     }
@@ -100,6 +101,10 @@ export class FlowExecutionService {
     }
 
     this.logger.log(`Found failed node: ${failedNode.nodeId}`);
+
+    // Find the failed branch
+    const failedBranch = execution.branches.find(b => b.status === 'failed');
+    const branchId = failedBranch?.branchId || 'root';
 
     // Reset the failed node to allow retry
     await this.executionModel.updateOne(
@@ -113,24 +118,29 @@ export class FlowExecutionService {
       },
     );
 
+    // Reset the failed branch
+    if (failedBranch) {
+      await this.executionModel.updateOne(
+        { _id: executionId, 'branches.branchId': branchId },
+        { $set: { 'branches.$.status': 'running' } }
+      );
+    }
+
     // Update execution status back to running
     await this.executionModel.updateOne(
       { _id: executionId },
-      { status: 'running' },
+      { $set: { status: 'running', error: null } }
     );
 
-    // Get the flow from flows collection (cast to any to avoid type issues)
-    const flowDoc: any = await this.executionModel.db.collection('flows').findOne({ _id: execution.flowId });
-    
     // Find the node in the flow
-    const node = flowDoc.nodes.find((n: any) => n.id === failedNode.nodeId);
+    const node = flow.nodes.find((n) => n.id === failedNode.nodeId);
     if (!node) {
       throw new Error(`Node ${failedNode.nodeId} not found in flow`);
     }
 
     // Retry from this node with original trigger data
     try {
-      await this.executeNode(node, flowDoc, executionId, execution.triggerData, 'root');
+      await this.executeNode(node, flow, executionId, execution.triggerData, branchId);
       
       // Completion is now handled by the END node when all branches arrive
       this.logger.log(`Retry execution resumed for ${executionId}`);
@@ -139,7 +149,7 @@ export class FlowExecutionService {
       // Keep as failed
       await this.executionModel.updateOne(
         { _id: executionId },
-        { status: 'failed' },
+        { $set: { status: 'failed', error: error.message } }
       );
     }
 
@@ -367,6 +377,18 @@ export class FlowExecutionService {
             'executedNodes.$.endTime': new Date(),
           },
         },
+      );
+
+      // Mark the branch as failed
+      await this.executionModel.updateOne(
+        { _id: executionId, 'branches.branchId': branchId },
+        { $set: { 'branches.$.status': 'failed' } }
+      );
+
+      // Mark execution as failed
+      await this.executionModel.updateOne(
+        { _id: executionId },
+        { $set: { status: 'failed', error: error.message } }
       );
 
       throw error;
@@ -684,21 +706,34 @@ export class FlowExecutionService {
     const endNodeExec = result.executedNodes.find(n => n.nodeId === node.id);
     const arrivalCount = endNodeExec?.arrivalCount || 1;
 
-    // Count total branches and completed branches
+    // Count total branches, completed, and failed branches
     const totalBranches = result.branches.length;
     const completedBranches = result.branches.filter(b => b.status === 'completed').length;
+    const failedBranches = result.branches.filter(b => b.status === 'failed').length;
+    const finishedBranches = completedBranches + failedBranches;
 
-    this.logger.log(`   Arrivals: ${arrivalCount} | Branches: ${completedBranches}/${totalBranches} completed`);
+    this.logger.log(`   Arrivals: ${arrivalCount} | Branches: ${completedBranches}/${totalBranches} completed, ${failedBranches} failed`);
 
-    // Mark flow as completed when ALL branches are completed
-    if (completedBranches === totalBranches) {
-      this.logger.log(`   ✅ All ${totalBranches} branches completed! Marking flow as done.`);
-      await this.executionModel.updateOne(
-        { _id: executionId },
-        { $set: { status: 'completed' } },
-      );
+    // Mark flow as completed/failed when ALL branches are finished (completed or failed)
+    if (finishedBranches === totalBranches) {
+      // Check if execution already marked as failed (from a failed node)
+      if (result.status === 'failed') {
+        this.logger.log(`   ❌ Flow already marked as failed due to node failure.`);
+      } else if (failedBranches > 0) {
+        this.logger.log(`   ❌ ${failedBranches} branch(es) failed! Marking flow as failed.`);
+        await this.executionModel.updateOne(
+          { _id: executionId },
+          { $set: { status: 'failed' } },
+        );
+      } else {
+        this.logger.log(`   ✅ All ${totalBranches} branches completed! Marking flow as done.`);
+        await this.executionModel.updateOne(
+          { _id: executionId },
+          { $set: { status: 'completed' } },
+        );
+      }
     } else {
-      this.logger.log(`   ⏳ Waiting for ${totalBranches - completedBranches} more branches...`);
+      this.logger.log(`   ⏳ Waiting for ${totalBranches - finishedBranches} more branches...`);
     }
 
     return { 

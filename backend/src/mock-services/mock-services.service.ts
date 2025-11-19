@@ -43,6 +43,14 @@ export class MockServicesService {
     template: string,
     idempotencyKey?: string,
   ): Promise<WhatsAppMessage> {
+    // Simulate error for testing
+    if (to.toLowerCase().includes('error') || 
+        message.toLowerCase().includes('error') || 
+        template.toLowerCase().includes('error')) {
+      this.logger.error(`❌ WhatsApp API Error: Simulated failure`);
+      throw new Error('WhatsApp API Error: Service temporarily unavailable');
+    }
+
     // Check idempotency
     if (idempotencyKey && this.messageIdempotency.has(idempotencyKey)) {
       this.logger.log(`[Idempotent] WhatsApp message already sent with key: ${idempotencyKey}`);
@@ -76,6 +84,13 @@ export class MockServicesService {
     note: string,
     idempotencyKey?: string,
   ): Promise<OrderNote> {
+    // Simulate error for testing
+    if (orderId.toLowerCase().includes('error') || 
+        note.toLowerCase().includes('error')) {
+      this.logger.error(`❌ Order API Error: Simulated failure`);
+      throw new Error('Order API Error: Unable to add note');
+    }
+
     // Check idempotency
     if (idempotencyKey && this.orderNoteIdempotency.has(idempotencyKey)) {
       this.logger.log(`[Idempotent] Order note already added with key: ${idempotencyKey}`);
@@ -107,6 +122,13 @@ export class MockServicesService {
     note: string,
     idempotencyKey?: string,
   ): Promise<CustomerNote> {
+    // Simulate error for testing
+    if (customerId.toLowerCase().includes('error') || 
+        note.toLowerCase().includes('error')) {
+      this.logger.error(`❌ Customer API Error: Simulated failure`);
+      throw new Error('Customer API Error: Unable to add note');
+    }
+
     // Check idempotency
     if (idempotencyKey && this.customerNoteIdempotency.has(idempotencyKey)) {
       this.logger.log(`[Idempotent] Customer note already added with key: ${idempotencyKey}`);
