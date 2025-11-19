@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bull';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { FlowsModule } from './flows/flows.module';
+import { MockServicesModule } from './mock-services/mock-services.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { FlowsModule } from './flows/flows.module';
       },
     }),
     FlowsModule,
+    MockServicesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

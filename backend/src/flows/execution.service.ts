@@ -5,19 +5,16 @@ import { Model, Types } from 'mongoose';
 import type { Queue } from 'bull';
 import { Flow, FlowNode, NodeType } from './schemas/flow.schema';
 import { Execution, ExecutionDocument } from './schemas/execution.schema';
+import { MockServicesService } from '../mock-services/mock-services.service';
 
 @Injectable()
 export class FlowExecutionService {
   private readonly logger = new Logger(FlowExecutionService.name);
-  
-  // In-memory idempotency stores (in production: use Redis)
-  private sentMessages = new Map<string, any>();
-  private orderNotes = new Map<string, any>();
-  private customerNotes = new Map<string, any>();
 
   constructor(
     @InjectModel(Execution.name) private executionModel: Model<ExecutionDocument>,
     @InjectQueue('flow-delays') private delayQueue: Queue,
+    private mockServicesService: MockServicesService,
   ) {}
 
   async executeFlow(flow: Flow, triggerData: Record<string, any>): Promise<ExecutionDocument> {
@@ -406,13 +403,13 @@ export class FlowExecutionService {
       processedMessage = processedMessage.replace(match, value);
     }
 
-    // Mock API call with idempotency
-    const mockApiResponse = await this.mockSendWhatsAppMessage({
+    // Call mock service
+    const mockApiResponse = await this.mockServicesService.sendWhatsAppMessage(
+      data.customer_phone || '+1234567890',
+      processedMessage,
+      config.template || 'default',
       idempotencyKey,
-      to: data.customer_phone || '+1234567890',
-      message: processedMessage,
-      template: config.template || 'default',
-    });
+    );
 
     this.logger.log(`📱 SEND_MESSAGE: Sent WhatsApp to ${mockApiResponse.to}`);
     this.logger.log(`   Message: "${processedMessage}"`);
@@ -420,7 +417,7 @@ export class FlowExecutionService {
     return {
       to: mockApiResponse.to,
       message: processedMessage,
-      messageId: mockApiResponse.messageId,
+      messageId: mockApiResponse.id,
     };
   }
 
@@ -433,20 +430,19 @@ export class FlowExecutionService {
     const note = config.note || 'Order note';
     const orderId = data.order_id || 'unknown';
 
-    // Mock API call with idempotency
-    const mockApiResponse = await this.mockAddOrderNote({
-      idempotencyKey,
+    // Call mock service
+    const mockApiResponse = await this.mockServicesService.addOrderNote(
       orderId,
       note,
-      timestamp: new Date().toISOString(),
-    });
+      idempotencyKey,
+    );
 
     this.logger.log(`📝 ADD_ORDER_NOTE: Added note to order ${orderId}`);
     this.logger.log(`   Note: "${note}"`);
 
     return {
       orderId,
-      noteId: mockApiResponse.noteId,
+      noteId: mockApiResponse.id,
       note,
     };
   }
@@ -460,20 +456,19 @@ export class FlowExecutionService {
     const note = config.note || 'Customer note';
     const customerId = data.customer_id || 'unknown';
 
-    // Mock API call with idempotency
-    const mockApiResponse = await this.mockAddCustomerNote({
-      idempotencyKey,
+    // Call mock service
+    const mockApiResponse = await this.mockServicesService.addCustomerNote(
       customerId,
       note,
-      timestamp: new Date().toISOString(),
-    });
+      idempotencyKey,
+    );
 
     this.logger.log(`👤 ADD_CUSTOMER_NOTE: Added note to customer ${customerId}`);
     this.logger.log(`   Note: "${note}"`);
 
     return {
       customerId,
-      noteId: mockApiResponse.noteId,
+      noteId: mockApiResponse.id,
       note,
     };
   }
@@ -715,77 +710,4 @@ export class FlowExecutionService {
     };
   }
 
-  // Mock API implementations with idempotency
-  private async mockSendWhatsAppMessage(payload: {
-    idempotencyKey: string;
-    to: string;
-    message: string;
-    template: string;
-  }): Promise<{ messageId: string; to: string; status: string }> {
-    // Check idempotency
-    if (this.sentMessages.has(payload.idempotencyKey)) {
-      this.logger.log(`   [Idempotent] Message already sent`);
-      return this.sentMessages.get(payload.idempotencyKey);
-    }
-
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    const result = {
-      messageId: `msg_${Date.now()}`,
-      to: payload.to,
-      status: 'sent',
-    };
-
-    this.sentMessages.set(payload.idempotencyKey, result);
-    return result;
-  }
-
-  private async mockAddOrderNote(payload: {
-    idempotencyKey: string;
-    orderId: string;
-    note: string;
-    timestamp: string;
-  }): Promise<{ noteId: string; orderId: string }> {
-    // Check idempotency
-    if (this.orderNotes.has(payload.idempotencyKey)) {
-      this.logger.log(`   [Idempotent] Order note already added`);
-      return this.orderNotes.get(payload.idempotencyKey);
-    }
-
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    const result = {
-      noteId: `note_${Date.now()}`,
-      orderId: payload.orderId,
-    };
-
-    this.orderNotes.set(payload.idempotencyKey, result);
-    return result;
-  }
-
-  private async mockAddCustomerNote(payload: {
-    idempotencyKey: string;
-    customerId: string;
-    note: string;
-    timestamp: string;
-  }): Promise<{ noteId: string; customerId: string }> {
-    // Check idempotency
-    if (this.customerNotes.has(payload.idempotencyKey)) {
-      this.logger.log(`   [Idempotent] Customer note already added`);
-      return this.customerNotes.get(payload.idempotencyKey);
-    }
-
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    const result = {
-      noteId: `note_${Date.now()}`,
-      customerId: payload.customerId,
-    };
-
-    this.customerNotes.set(payload.idempotencyKey, result);
-    return result;
-  }
 }
