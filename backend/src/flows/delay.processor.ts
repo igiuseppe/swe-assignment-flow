@@ -103,22 +103,38 @@ export class DelayProcessor {
     } catch (error) {
       this.logger.error(`Failed to resume execution ${executionId}:`, error);
       
-      // Mark execution as failed with error details
-      await this.executionModel.updateOne(
-        { _id: executionId },
-        { 
-          $set: {
-            status: 'failed',
-            error: error.message,
-            errorDetails: {
-              failedBranches: [branchId],
-              failedNodes: [],
-              lastError: `Failed to resume after delay: ${error.message}`,
-              timestamp: new Date(),
+      // Get current execution state to build accurate errorDetails
+      const exec = await this.executionModel.findById(executionId);
+      if (exec) {
+        const failedBranches = exec.branches
+          .filter(b => b.status === 'failed')
+          .map(b => b.branchId);
+        
+        const failedNodes = exec.executedNodes
+          .filter(n => n.status === 'failed')
+          .map(n => ({
+            nodeId: n.nodeId,
+            nodeType: n.nodeType,
+            error: n.error || 'Unknown error',
+          }));
+
+        // Only update status if not already failed (to preserve existing errorDetails from executeNode)
+        await this.executionModel.updateOne(
+          { _id: executionId, status: { $ne: 'failed' } },
+          { 
+            $set: {
+              status: 'failed',
+              error: `Failed to resume after delay: ${error.message}`,
+              errorDetails: {
+                failedBranches,
+                failedNodes,
+                lastError: `Failed to resume after delay: ${error.message}`,
+                timestamp: new Date(),
+              }
             }
-          }
-        },
-      );
+          },
+        );
+      }
     }
   }
 }
