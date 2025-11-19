@@ -160,13 +160,20 @@ export class FlowExecutionService {
 
     // Special handling for END node - it needs to track multiple arrivals
     if (node.type === NodeType.END) {
-      // Atomically ensure END node exists (only once) using $addToSet with a unique marker
-      // We'll use a simple approach: try to add, and MongoDB's array uniqueness will prevent duplicates
-      // But since we can't rely on array uniqueness without an index, we'll use a different strategy:
-      // Always try to increment arrivalCount, and if the node doesn't exist, it will fail gracefully
-      
-      // First, ensure the END node exists (race-safe with MongoDB's atomic operations)
-      const updateResult = await this.executionModel.updateOne(
+      // First, mark THIS branch as completed
+      await this.executionModel.updateOne(
+        { _id: executionId, 'branches.branchId': branchId },
+        {
+          $set: {
+            'branches.$.status': 'completed',
+            'branches.$.currentNodeId': node.id,
+          },
+          $push: { 'branches.$.path': node.id }
+        }
+      );
+
+      // Ensure END node exists (race-safe with MongoDB's atomic operations)
+      await this.executionModel.updateOne(
         { 
           _id: executionId, 
           'executedNodes.nodeId': { $ne: node.id } // Only if END node doesn't exist
@@ -187,9 +194,9 @@ export class FlowExecutionService {
       );
 
       // Execute END node logic (handles arrival counting and completion)
-      const result = await this.executeEnd(node, flow, executionId, data);
+      const result = await this.executeEnd(node, flow, executionId, data, branchId);
       
-      // Mark as completed (executeEnd may have already set completion status)
+      // Mark END node as completed
       await this.executionModel.updateOne(
         { _id: executionId, 'executedNodes.nodeId': node.id },
         {
@@ -291,9 +298,16 @@ export class FlowExecutionService {
           path: [node.id],
         }));
 
+        // First, mark parent branch as completed (it has split into children)
+        await this.executionModel.updateOne(
+          { _id: executionId, 'branches.branchId': branchId },
+          { $set: { 'branches.$.status': 'completed' } }
+        );
+
+        // Then, add new child branches
         await this.executionModel.updateOne(
           { _id: executionId },
-          { $push: { branches: { $each: newBranches } } },
+          { $push: { branches: { $each: newBranches } } }
         );
       }
 
@@ -308,6 +322,18 @@ export class FlowExecutionService {
 
       // Execute all branches in parallel
       await Promise.all(nextNodePromises);
+
+      //not needed cause we validate flow at the start
+      // Handle dead-end branches (no outgoing edges)
+      // At this point, node type is one of: TRIGGER, SEND_MESSAGE, ADD_ORDER_NOTE, ADD_CUSTOMER_NOTE
+      // (TIME_DELAY, CONDITIONAL_SPLIT, and END return early)
+      if (nextEdges.length === 0) {
+        this.logger.log(`   → Branch ${branchId} reached dead end at ${node.id}`);
+        await this.executionModel.updateOne(
+          { _id: executionId, 'branches.branchId': branchId },
+          { $set: { 'branches.$.status': 'completed' } }
+        );
+      }
 
     } catch (error) {
       this.logger.error(`Error executing node ${node.id}:`, error);
@@ -625,7 +651,13 @@ export class FlowExecutionService {
         await this.executeNode(nextNode, flow, executionId, data, branchId);
       }
     } else {
-      this.logger.warn(`   ⚠️  No edge found for ${finalResult ? 'TRUE' : 'FALSE'} path`);
+      this.logger.warn(`   ⚠️  No edge found for ${finalResult ? 'TRUE' : 'FALSE'} path - marking branch as completed`);
+      
+      // Mark this branch as completed since it has nowhere to go
+      await this.executionModel.updateOne(
+        { _id: executionId, 'branches.branchId': branchId },
+        { $set: { 'branches.$.status': 'completed' } }
+      );
     }
 
     return { result: finalResult };
@@ -636,42 +668,51 @@ export class FlowExecutionService {
     flow: Flow,
     executionId: string,
     data: Record<string, any>,
+    branchId: string,
   ): Promise<any> {
-    this.logger.log(`🏁 END: Branch reached end node`);
+    this.logger.log(`🏁 END: Branch ${branchId} reached end node`);
 
-    // Get all incoming edges to END node
-    const incomingEdges = flow.edges.filter(e => e.target === node.id);
-    const expectedBranches = incomingEdges.length;
-
-    // Atomically increment counter for END node arrivals
+    // Atomically increment arrival counter
     const result = await this.executionModel.findOneAndUpdate(
       { _id: executionId, 'executedNodes.nodeId': node.id },
       {
         $inc: { 'executedNodes.$.arrivalCount': 1 },
-        $set: {
-          'executedNodes.$.endTime': new Date(),
-        }
+        $set: { 'executedNodes.$.endTime': new Date() }
       },
       { new: true }
     );
 
-    const endNodeExec = result?.executedNodes.find(n => n.nodeId === node.id);
+    if (!result) {
+      throw new Error('Execution not found');
+    }
+
+    const endNodeExec = result.executedNodes.find(n => n.nodeId === node.id);
     const arrivalCount = endNodeExec?.arrivalCount || 1;
 
-    this.logger.log(`   Arrivals: ${arrivalCount}/${expectedBranches}`);
+    // Count total branches and completed branches
+    const totalBranches = result.branches.length;
+    const completedBranches = result.branches.filter(b => b.status === 'completed').length;
 
-    // Only mark as completed when ALL branches have arrived
-    if (arrivalCount >= expectedBranches) {
-      this.logger.log(`   ✅ All branches completed! Marking flow as done.`);
+    this.logger.log(`   Arrivals: ${arrivalCount} | Branches: ${completedBranches}/${totalBranches} completed`);
+
+    // Mark flow as completed when ALL branches are completed
+    if (completedBranches === totalBranches) {
+      this.logger.log(`   ✅ All ${totalBranches} branches completed! Marking flow as done.`);
       await this.executionModel.updateOne(
         { _id: executionId },
         { $set: { status: 'completed' } },
       );
     } else {
-      this.logger.log(`   ⏳ Waiting for ${expectedBranches - arrivalCount} more branches...`);
+      this.logger.log(`   ⏳ Waiting for ${totalBranches - completedBranches} more branches...`);
     }
 
-    return { message: 'Branch reached end', arrivalCount, expectedBranches };
+    return { 
+      message: 'Branch reached end', 
+      branchId,
+      arrivalCount, 
+      completedBranches,
+      totalBranches 
+    };
   }
 
   // Mock API implementations with idempotency
