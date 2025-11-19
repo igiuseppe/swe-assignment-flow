@@ -67,19 +67,94 @@ export class FlowValidatorService {
     [NodeType.CONDITIONAL_SPLIT]: {
       validate: (node) => {
         const errors: string[] = [];
-        const { field, operator, value } = node.config || {};
-        
-        if (!field || typeof field !== 'string' || field.trim() === '') {
-          errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): field is required and must be a non-empty string`);
-        }
-        
+        const config = node.config || {};
         const validOperators = ['equals', 'not_equals', 'greater_than', 'less_than', 'greater_or_equal', 'less_or_equal', 'contains'];
-        if (!operator || typeof operator !== 'string' || !validOperators.includes(operator.trim())) {
-          errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): operator must be one of: ${validOperators.join(', ')}`);
-        }
+        const validLogicOps = ['AND', 'OR'];
         
-        if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
-          errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): value is required`);
+        // New format: condition groups with nested AND/OR logic
+        if (config.conditionGroups && Array.isArray(config.conditionGroups)) {
+          // Validate groups logic operator
+          if (!config.groupsLogic || !validLogicOps.includes(config.groupsLogic)) {
+            errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): groupsLogic must be one of: ${validLogicOps.join(', ')}`);
+          }
+          
+          // Must have at least one group
+          if (config.conditionGroups.length === 0) {
+            errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): must have at least one condition group`);
+          }
+          
+          // Validate each group
+          config.conditionGroups.forEach((group: any, groupIndex: number) => {
+            if (!group.conditions || !Array.isArray(group.conditions) || group.conditions.length === 0) {
+              errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): group ${groupIndex + 1} - must have at least one condition`);
+              return;
+            }
+            
+            // Validate group logic
+            if (!group.groupLogic || !validLogicOps.includes(group.groupLogic)) {
+              errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): group ${groupIndex + 1} - groupLogic must be one of: ${validLogicOps.join(', ')}`);
+            }
+            
+            // Validate each condition within the group
+            group.conditions.forEach((condition: any, condIndex: number) => {
+              if (!condition.field || typeof condition.field !== 'string' || condition.field.trim() === '') {
+                errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): group ${groupIndex + 1}, condition ${condIndex + 1} - field is required`);
+              }
+              
+              if (!condition.operator || typeof condition.operator !== 'string' || !validOperators.includes(condition.operator.trim())) {
+                errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): group ${groupIndex + 1}, condition ${condIndex + 1} - operator must be one of: ${validOperators.join(', ')}`);
+              }
+              
+              if (condition.value === undefined || condition.value === null || (typeof condition.value === 'string' && condition.value.trim() === '')) {
+                errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): group ${groupIndex + 1}, condition ${condIndex + 1} - value is required`);
+              }
+            });
+          });
+        }
+        // Old format: simple conditions array with single logic operator
+        else if (config.conditions && Array.isArray(config.conditions)) {
+          // Validate logic operator
+          if (!config.logicOperator || !validLogicOps.includes(config.logicOperator)) {
+            errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): logicOperator must be one of: ${validLogicOps.join(', ')}`);
+          }
+          
+          // Must have at least one condition
+          if (config.conditions.length === 0) {
+            errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): must have at least one condition`);
+          }
+          
+          // Validate each condition
+          config.conditions.forEach((condition: any, index: number) => {
+            if (!condition.field || typeof condition.field !== 'string' || condition.field.trim() === '') {
+              errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): condition ${index + 1} - field is required`);
+            }
+            
+            if (!condition.operator || typeof condition.operator !== 'string' || !validOperators.includes(condition.operator.trim())) {
+              errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): condition ${index + 1} - operator must be one of: ${validOperators.join(', ')}`);
+            }
+            
+            if (condition.value === undefined || condition.value === null || (typeof condition.value === 'string' && condition.value.trim() === '')) {
+              errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): condition ${index + 1} - value is required`);
+            }
+          });
+        } 
+        // Legacy format: single condition (backward compatibility)
+        else if (config.field || config.operator || config.value) {
+          if (!config.field || typeof config.field !== 'string' || config.field.trim() === '') {
+            errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): field is required`);
+          }
+          
+          if (!config.operator || typeof config.operator !== 'string' || !validOperators.includes(config.operator.trim())) {
+            errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): operator must be one of: ${validOperators.join(', ')}`);
+          }
+          
+          if (config.value === undefined || config.value === null || (typeof config.value === 'string' && config.value.trim() === '')) {
+            errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): value is required`);
+          }
+        } 
+        // No configuration at all
+        else {
+          errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): must have conditions configured`);
         }
         
         return errors;

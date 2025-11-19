@@ -44,7 +44,7 @@ function NodeConfigModal({
   
   // Initialize config with defaults for each node type
   const getInitialConfig = () => {
-    const existingConfig = node?.data?.config || {};
+    const existingConfig: any = node?.data?.config || {};
     
     switch (nodeType) {
       case NodeType.TIME_DELAY:
@@ -54,9 +54,13 @@ function NodeConfigModal({
         };
       case NodeType.CONDITIONAL_SPLIT:
         return {
-          field: existingConfig.field || '',
-          operator: existingConfig.operator || 'equals',
-          value: existingConfig.value || '',
+          conditionGroups: existingConfig.conditionGroups || [
+            {
+              conditions: [{ field: '', operator: 'equals', value: '' }],
+              groupLogic: 'AND'
+            }
+          ],
+          groupsLogic: existingConfig.groupsLogic || 'AND',
         };
       default:
         return existingConfig;
@@ -122,40 +126,161 @@ function NodeConfigModal({
           </>
         );
       case NodeType.CONDITIONAL_SPLIT:
+        const conditionGroups = config.conditionGroups || [
+          { conditions: [{ field: '', operator: 'equals', value: '' }], groupLogic: 'AND' }
+        ];
+        
         return (
           <>
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Condition Field</label>
-              <input
-                type="text"
-                value={config.field || ''}
-                onChange={(e) => setConfig({ ...config, field: e.target.value })}
-                placeholder="e.g., order.total"
-                className="w-full border border-gray-300 rounded px-3 py-2"
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Operator</label>
+            <div className="mb-4 p-3 bg-blue-50 rounded border border-blue-200">
+              <label className="block text-sm font-medium mb-2">Groups Logic (Between Groups)</label>
               <select
-                value={config.operator || 'equals'}
-                onChange={(e) => setConfig({ ...config, operator: e.target.value })}
-                className="w-full border border-gray-300 rounded px-3 py-2"
+                value={config.groupsLogic || 'AND'}
+                onChange={(e) => setConfig({ ...config, groupsLogic: e.target.value })}
+                className="w-full border border-blue-300 rounded px-3 py-2 bg-white font-semibold"
               >
-                <option value="equals">Equals</option>
-                <option value="contains">Contains</option>
-                <option value="greater_than">Greater Than</option>
-                <option value="less_than">Less Than</option>
+                <option value="AND">AND - All groups must match</option>
+                <option value="OR">OR - Any group must match</option>
               </select>
             </div>
+
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Value</label>
-              <input
-                type="text"
-                value={config.value || ''}
-                onChange={(e) => setConfig({ ...config, value: e.target.value })}
-                placeholder="Comparison value"
-                className="w-full border border-gray-300 rounded px-3 py-2"
-              />
+              <div className="flex justify-between items-center mb-3">
+                <label className="block text-sm font-medium">Condition Groups</label>
+                <button
+                  onClick={() => {
+                    const newGroups = [...conditionGroups, { 
+                      conditions: [{ field: '', operator: 'equals', value: '' }],
+                      groupLogic: 'AND'
+                    }];
+                    setConfig({ ...config, conditionGroups: newGroups });
+                  }}
+                  className="text-sm px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
+                >
+                  + Add Group
+                </button>
+              </div>
+
+              {conditionGroups.map((group: any, groupIndex: number) => (
+                <div key={groupIndex} className="mb-4 p-4 border-2 border-purple-300 rounded bg-purple-50">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm font-bold text-purple-800">Group {groupIndex + 1}</span>
+                    {conditionGroups.length > 1 && (
+                      <button
+                        onClick={() => {
+                          const newGroups = conditionGroups.filter((_: any, i: number) => i !== groupIndex);
+                          setConfig({ ...config, conditionGroups: newGroups });
+                        }}
+                        className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+                      >
+                        Remove Group
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium mb-1">Logic Within This Group</label>
+                    <select
+                      value={group.groupLogic || 'AND'}
+                      onChange={(e) => {
+                        const newGroups = [...conditionGroups];
+                        newGroups[groupIndex] = { ...group, groupLogic: e.target.value };
+                        setConfig({ ...config, conditionGroups: newGroups });
+                      }}
+                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+                    >
+                      <option value="AND">AND - All conditions in this group</option>
+                      <option value="OR">OR - Any condition in this group</option>
+                    </select>
+                  </div>
+
+                  <div className="mb-2">
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="block text-xs font-semibold">Conditions</label>
+                      <button
+                        onClick={() => {
+                          const newGroups = [...conditionGroups];
+                          newGroups[groupIndex].conditions.push({ field: '', operator: 'equals', value: '' });
+                          setConfig({ ...config, conditionGroups: newGroups });
+                        }}
+                        className="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                      >
+                        + Add Condition
+                      </button>
+                    </div>
+
+                    {group.conditions.map((condition: any, condIndex: number) => (
+                      <div key={condIndex} className="mb-2 p-2 border border-gray-300 rounded bg-white">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-xs text-gray-600">Condition {condIndex + 1}</span>
+                          {group.conditions.length > 1 && (
+                            <button
+                              onClick={() => {
+                                const newGroups = [...conditionGroups];
+                                newGroups[groupIndex].conditions = group.conditions.filter((_: any, i: number) => i !== condIndex);
+                                setConfig({ ...config, conditionGroups: newGroups });
+                              }}
+                              className="text-xs px-1.5 py-0.5 bg-red-400 text-white rounded hover:bg-red-500"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                        
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <input
+                              type="text"
+                              value={condition.field || ''}
+                              onChange={(e) => {
+                                const newGroups = [...conditionGroups];
+                                newGroups[groupIndex].conditions[condIndex] = { ...condition, field: e.target.value };
+                                setConfig({ ...config, conditionGroups: newGroups });
+                              }}
+                              placeholder="field"
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <select
+                              value={condition.operator || 'equals'}
+                              onChange={(e) => {
+                                const newGroups = [...conditionGroups];
+                                newGroups[groupIndex].conditions[condIndex] = { ...condition, operator: e.target.value };
+                                setConfig({ ...config, conditionGroups: newGroups });
+                              }}
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                            >
+                              <option value="equals">=</option>
+                              <option value="not_equals">≠</option>
+                              <option value="greater_than">&gt;</option>
+                              <option value="less_than">&lt;</option>
+                              <option value="greater_or_equal">≥</option>
+                              <option value="less_or_equal">≤</option>
+                              <option value="contains">contains</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <input
+                              type="text"
+                              value={condition.value || ''}
+                              onChange={(e) => {
+                                const newGroups = [...conditionGroups];
+                                newGroups[groupIndex].conditions[condIndex] = { ...condition, value: e.target.value };
+                                setConfig({ ...config, conditionGroups: newGroups });
+                              }}
+                              placeholder="value"
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </>
         );
@@ -177,9 +302,11 @@ function NodeConfigModal({
     }
   };
 
+  const isConditionalSplit = nodeType === NodeType.CONDITIONAL_SPLIT;
+  
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto">
+      <div className={`bg-white rounded-lg p-6 w-full ${isConditionalSplit ? 'max-w-2xl' : 'max-w-md'} max-h-[80vh] overflow-y-auto`}>
         <h2 className="text-2xl font-bold mb-4">Configure {String(node.data.label || 'Node')}</h2>
         {renderConfigFields()}
         <div className="flex gap-3 justify-between">

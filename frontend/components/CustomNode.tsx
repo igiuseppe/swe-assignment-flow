@@ -53,6 +53,31 @@ function CustomNode({ data }: NodeProps) {
 
   const renderConditionalInfo = () => {
     if (!isConditional || !config) return null;
+    
+    // New format with condition groups
+    if (config.conditionGroups && Array.isArray(config.conditionGroups)) {
+      const groupCount = config.conditionGroups.length;
+      const totalConds = config.conditionGroups.reduce((sum: number, g: any) => sum + (g.conditions?.length || 0), 0);
+      const groupsLogic = config.groupsLogic || 'AND';
+      return (
+        <div className="text-xs mt-1 opacity-90">
+          {groupCount} group{groupCount !== 1 ? 's' : ''} ({groupsLogic}) • {totalConds} cond
+        </div>
+      );
+    }
+    
+    // Old format with simple conditions array
+    if (config.conditions && Array.isArray(config.conditions)) {
+      const logicOp = config.logicOperator || 'AND';
+      const condCount = config.conditions.length;
+      return (
+        <div className="text-xs mt-1 opacity-90">
+          {condCount} condition{condCount !== 1 ? 's' : ''} ({logicOp})
+        </div>
+      );
+    }
+    
+    // Legacy format (backward compatibility)
     const field = config.field || 'field';
     const operator = config.operator || 'equals';
     const value = config.value || 'value';
