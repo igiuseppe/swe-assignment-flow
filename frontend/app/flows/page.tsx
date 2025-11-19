@@ -91,12 +91,20 @@ export default function FlowsPage() {
             <h1 className="text-3xl font-bold">Flows</h1>
             <p className="text-gray-600 mt-1">Manage your automation workflows</p>
           </div>
-          <button
-            onClick={handleCreateNew}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
-          >
-            + Create New Flow
-          </button>
+          <div className="flex gap-3">
+            <Link
+              href="/triggers"
+              className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition"
+            >
+              Fire Triggers
+            </Link>
+            <button
+              onClick={handleCreateNew}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
+            >
+              + Create New Flow
+            </button>
+          </div>
         </div>
 
         {flows.length === 0 ? (

@@ -77,5 +77,15 @@ export const flowsApi = {
     );
     return response.data;
   },
+
+  async fireTrigger(triggerType: string, payload?: Record<string, any>): Promise<{
+    message: string;
+    triggerType: string;
+    flowsTriggered: number;
+    executions: { executionId: string; flowId: string }[];
+  }> {
+    const response = await api.post(`/flows/trigger/${triggerType}`, { payload });
+    return response.data;
+  },
 };
 

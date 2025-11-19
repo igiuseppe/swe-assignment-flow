@@ -14,10 +14,12 @@ import { Model, Types } from 'mongoose';
 import { FlowsService } from './flows.service';
 import { FlowExecutionService } from './execution.service';
 import { Execution, ExecutionDocument } from './schemas/execution.schema';
+import { TriggerType } from './schemas/flow.schema';
 import { CreateFlowDto } from './dto/create-flow.dto';
 import { UpdateFlowDto } from './dto/update-flow.dto';
 import { ValidateFlowDto } from './dto/validate-flow.dto';
 import { RetryExecutionDto } from './dto/retry-execution.dto';
+import { FireTriggerDto } from './dto/fire-trigger.dto';
 
 @Controller('flows')
 export class FlowsController {
@@ -104,6 +106,41 @@ export class FlowsController {
     @Body() retryDto: RetryExecutionDto,
   ) {
     return this.executionService.retryExecution(id, retryDto.nodeIds);
+  }
+
+  @Post('trigger/:triggerType')
+  async fireTrigger(
+    @Param('triggerType') triggerType: TriggerType,
+    @Body() fireTriggerDto: FireTriggerDto,
+  ) {
+    // Find all active flows with this trigger type
+    const activeFlows = await this.flowsService.findActiveByTriggerType(triggerType);
+
+    if (activeFlows.length === 0) {
+      return {
+        message: `No active flows found for trigger type: ${triggerType}`,
+        executions: [],
+        flowsTriggered: 0,
+      };
+    }
+
+    // Execute all flows in parallel (non-blocking)
+    const executionPromises = activeFlows.map(flow =>
+      this.executionService.executeFlow(flow, fireTriggerDto.payload || {})
+    );
+
+    // Fire and forget - return immediately with execution IDs
+    const executions = await Promise.all(executionPromises);
+
+    return {
+      message: `Triggered ${activeFlows.length} flow(s)`,
+      triggerType,
+      flowsTriggered: activeFlows.length,
+      executions: executions.map(exec => ({
+        executionId: exec._id,
+        flowId: exec.flowId,
+      })),
+    };
   }
 }
 

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Flow, FlowDocument, NodeType, NodeCategory } from './schemas/flow.schema';
+import { Flow, FlowDocument, NodeType, NodeCategory, TriggerType } from './schemas/flow.schema';
 import { CreateFlowDto } from './dto/create-flow.dto';
 import { UpdateFlowDto } from './dto/update-flow.dto';
 import { ValidateFlowDto } from './dto/validate-flow.dto';
@@ -102,6 +102,12 @@ export class FlowsService {
 
   async deactivate(id: string): Promise<Flow> {
     return this.update(id, { isActive: false });
+  }
+
+  async findActiveByTriggerType(triggerType: TriggerType): Promise<Flow[]> {
+    return this.flowModel
+      .find({ triggerType, isActive: true })
+      .exec();
   }
 }
 

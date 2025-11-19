@@ -8,12 +8,20 @@ export default function Home() {
         <p className="text-gray-600 mb-8">
           Create and manage marketing automation workflows
         </p>
-        <Link
-          href="/flows"
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
-        >
-          Go to Flows
-        </Link>
+        <div className="flex gap-4 justify-center">
+          <Link
+            href="/flows"
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition"
+          >
+            Manage Flows
+          </Link>
+          <Link
+            href="/triggers"
+            className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition"
+          >
+            Fire Triggers
+          </Link>
+        </div>
       </div>
     </div>
   );
