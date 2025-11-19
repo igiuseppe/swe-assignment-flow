@@ -12,6 +12,8 @@ export default function FlowsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newFlowName, setNewFlowName] = useState('');
   const [newFlowTrigger, setNewFlowTrigger] = useState<TriggerType>(TriggerType.NEW_ORDER);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importJson, setImportJson] = useState('');
 
   useEffect(() => {
     loadFlows();
@@ -67,6 +69,40 @@ export default function FlowsPage() {
     }
   };
 
+  const handleImportFlow = async () => {
+    if (!importJson.trim()) {
+      alert('Please enter flow JSON');
+      return;
+    }
+
+    try {
+      const flowData = JSON.parse(importJson);
+      const newFlow = await flowsApi.importFlow(flowData);
+      setShowImportModal(false);
+      setImportJson('');
+      alert('Flow imported successfully!');
+      window.location.href = `/flows/${newFlow._id}`;
+    } catch (err: any) {
+      if (err instanceof SyntaxError) {
+        alert('Invalid JSON format');
+      } else {
+        alert('Failed to import flow: ' + (err.response?.data?.message || err.message));
+      }
+      console.error(err);
+    }
+  };
+
+  const handleLoadDemo = async () => {
+    try {
+      const demoFlow = await flowsApi.loadDemoFlow();
+      alert('Demo flow loaded successfully!');
+      window.location.href = `/flows/${demoFlow._id}`;
+    } catch (err) {
+      alert('Failed to load demo flow');
+      console.error(err);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -98,6 +134,18 @@ export default function FlowsPage() {
             >
               Fire Triggers
             </Link>
+            <button
+              onClick={handleLoadDemo}
+              className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition"
+            >
+              📚 Load Demo Flow
+            </button>
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 transition"
+            >
+              📤 Import Flow
+            </button>
             <button
               onClick={handleCreateNew}
               className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
@@ -219,6 +267,47 @@ export default function FlowsPage() {
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               >
                 Create Flow
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Flow Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
+            <h2 className="text-2xl font-bold mb-4">Import Flow</h2>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">Flow JSON</label>
+              <textarea
+                value={importJson}
+                onChange={(e) => setImportJson(e.target.value)}
+                placeholder='Paste flow JSON here, e.g.:\n{\n  "name": "My Flow",\n  "triggerType": "NEW_ORDER",\n  "nodes": [...],\n  "edges": [...]\n}'
+                className="w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm h-96"
+                autoFocus
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Paste the exported flow JSON. The flow will be created as a new flow.
+              </p>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportJson('');
+                }}
+                className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImportFlow}
+                className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700"
+              >
+                Import Flow
               </button>
             </div>
           </div>

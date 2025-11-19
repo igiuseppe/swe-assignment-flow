@@ -87,5 +87,27 @@ export const flowsApi = {
     const response = await api.post(`/flows/trigger/${triggerType}`, { payload });
     return response.data;
   },
+
+  async importFlow(flowData: any): Promise<Flow> {
+    const response = await api.post<Flow>('/flows/import', flowData);
+    return response.data;
+  },
+
+  async loadDemoFlow(): Promise<Flow> {
+    const response = await api.post<Flow>('/flows/demo');
+    return response.data;
+  },
+
+  async getFlowStats(flowId: string): Promise<{
+    totalExecutions: number;
+    successCount: number;
+    failedCount: number;
+    runningCount: number;
+    totalRetries: number;
+    avgDuration: number;
+  }> {
+    const response = await api.get(`/flows/${flowId}/stats`);
+    return response.data;
+  },
 };
 

@@ -113,6 +113,7 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   const [localEdges, setLocalEdges] = useState<FlowEdge[]>([]);
   const [showTriggerModal, setShowTriggerModal] = useState(false);
   const [editingTrigger, setEditingTrigger] = useState<TriggerType | null>(null);
+  const [triggerPayload, setTriggerPayload] = useState<string>('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [executing, setExecuting] = useState(false);
 
@@ -140,6 +141,18 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     }
   };
 
+  const getDefaultTriggerPayload = () => {
+    return {
+      order_id: 'ORD-12345',
+      customer_id: 'CUST-67890',
+      customer_name: 'John Doe',
+      customer_phone: '+1234567890',
+      order_total: 99.99,
+      order_status: 'pending',
+      order_items: ['Product A', 'Product B'],
+    };
+  };
+
   const handleNodesChange = useCallback((nodes: FlowNode[]) => {
     console.log('[FlowBuilder] Received nodes from FlowCanvas:', nodes);
     setLocalNodes(nodes);
@@ -152,23 +165,51 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     setHasUnsavedChanges(true);
   }, []);
 
+  const handleExportFlow = () => {
+    if (!flow) return;
+
+    // Create export object without internal fields
+    const exportData = {
+      name: flow.name,
+      description: flow.description,
+      triggerType: flow.triggerType,
+      isActive: flow.isActive,
+      nodes: flow.nodes,
+      edges: flow.edges,
+    };
+
+    // Create blob and download
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${flow.name.replace(/\s+/g, '-').toLowerCase()}-flow.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleTestFlow = async () => {
     if (!flow?._id) return;
 
-    // Sample trigger data based on trigger type
-    const sampleData: Record<string, any> = {
-      order_id: 'ORD-12345',
-      customer_id: 'CUST-67890',
-      customer_name: 'John Doe',
-      customer_phone: '+1234567890',
-      order_total: 99.99,
-      order_status: 'pending',
-      order_items: ['Product A', 'Product B'],
-    };
+    // Use custom payload if provided, otherwise use default
+    let payloadData: Record<string, any>;
+    
+    if (triggerPayload.trim()) {
+      try {
+        payloadData = JSON.parse(triggerPayload);
+      } catch (err) {
+        alert('Invalid JSON payload. Using default payload.');
+        payloadData = getDefaultTriggerPayload();
+      }
+    } else {
+      payloadData = getDefaultTriggerPayload();
+    }
 
     try {
       setExecuting(true);
-      const result = await flowsApi.execute(flow._id, sampleData);
+      const result = await flowsApi.execute(flow._id, payloadData);
       
       // Redirect to executions page with the execution ID to auto-open details
       router.push(`/executions/${flow._id}?executionId=${result._id}`);
@@ -243,6 +284,13 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
               📊 Executions
             </button>
             <button
+              onClick={handleExportFlow}
+              className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50"
+              title="Export flow as JSON"
+            >
+              📥 Export
+            </button>
+            <button
               onClick={handleTestFlow}
               disabled={executing || hasUnsavedChanges}
               className="px-4 py-2 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -315,10 +363,10 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
       {/* Trigger Edit Modal */}
       {showTriggerModal && editingTrigger && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
             <h2 className="text-2xl font-bold mb-4">Edit Trigger</h2>
             
-            <div className="mb-6">
+            <div className="mb-4">
               <label className="block text-sm font-medium mb-2">Trigger Type</label>
               <select
                 value={editingTrigger}
@@ -330,6 +378,22 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
                 <option value={TriggerType.CUSTOMER_REGISTRATION}>Customer Registration</option>
                 <option value={TriggerType.ORDER_STATUS_CHANGE}>Order Status Change</option>
               </select>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-2">
+                Default Test Payload (JSON)
+                <span className="text-gray-500 font-normal ml-2">(optional - leave empty to use default)</span>
+              </label>
+              <textarea
+                value={triggerPayload}
+                onChange={(e) => setTriggerPayload(e.target.value)}
+                placeholder={JSON.stringify(getDefaultTriggerPayload(), null, 2)}
+                className="w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm h-48"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                This payload will be used when testing the flow. If empty, default values will be used.
+              </p>
             </div>
 
             <div className="flex gap-3 justify-end">

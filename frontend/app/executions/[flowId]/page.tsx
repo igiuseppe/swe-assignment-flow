@@ -18,6 +18,14 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [selectedFailedNodes, setSelectedFailedNodes] = useState<string[]>([]);
+  const [stats, setStats] = useState<{
+    totalExecutions: number;
+    successCount: number;
+    failedCount: number;
+    runningCount: number;
+    totalRetries: number;
+    avgDuration: number;
+  } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -47,12 +55,14 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
   const loadData = async () => {
     try {
       setLoading(true);
-      const [flowData, executionsData] = await Promise.all([
+      const [flowData, executionsData, statsData] = await Promise.all([
         flowsApi.getOne(resolvedParams.flowId),
         flowsApi.getExecutions(resolvedParams.flowId),
+        flowsApi.getFlowStats(resolvedParams.flowId),
       ]);
       setFlow(flowData);
       setExecutions(executionsData);
+      setStats(statsData);
     } catch (err) {
       console.error(err);
       alert('Failed to load data');
@@ -63,8 +73,12 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
 
   const loadExecutions = async () => {
     try {
-      const data = await flowsApi.getExecutions(resolvedParams.flowId);
-      setExecutions(data);
+      const [executionsData, statsData] = await Promise.all([
+        flowsApi.getExecutions(resolvedParams.flowId),
+        flowsApi.getFlowStats(resolvedParams.flowId),
+      ]);
+      setExecutions(executionsData);
+      setStats(statsData);
     } catch (err) {
       console.error(err);
     }
@@ -220,6 +234,39 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
             Monitor and review all executions for this flow
           </p>
         </div>
+
+        {/* Statistics Panel */}
+        {stats && (
+          <div className="mb-6 bg-white rounded-lg border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold mb-4">Execution Statistics</h2>
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-blue-600">{stats.totalExecutions}</div>
+                <div className="text-sm text-gray-600 mt-1">Total</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-green-600">{stats.successCount}</div>
+                <div className="text-sm text-gray-600 mt-1">Success</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-red-600">{stats.failedCount}</div>
+                <div className="text-sm text-gray-600 mt-1">Failed</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-yellow-600">{stats.runningCount}</div>
+                <div className="text-sm text-gray-600 mt-1">Running</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-orange-600">{stats.totalRetries}</div>
+                <div className="text-sm text-gray-600 mt-1">Retries</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-purple-600">{stats.avgDuration}s</div>
+                <div className="text-sm text-gray-600 mt-1">Avg Duration</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Auto-refresh toggle */}
         <div className="mb-4 flex items-center gap-2">
@@ -506,6 +553,71 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
                       )}
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* API Call Logs */}
+            {selectedExecution.executedNodes.filter(n => 
+              ['SEND_MESSAGE', 'ADD_ORDER_NOTE', 'ADD_CUSTOMER_NOTE'].includes(n.nodeType)
+            ).length > 0 && (
+              <div className="mb-6">
+                <h3 className="font-semibold mb-3 text-gray-700">
+                  API Call Logs ({selectedExecution.executedNodes.filter(n => 
+                    ['SEND_MESSAGE', 'ADD_ORDER_NOTE', 'ADD_CUSTOMER_NOTE'].includes(n.nodeType)
+                  ).length})
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full border border-gray-200 rounded">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Node Type</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Timestamp</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {selectedExecution.executedNodes
+                        .filter(n => ['SEND_MESSAGE', 'ADD_ORDER_NOTE', 'ADD_CUSTOMER_NOTE'].includes(n.nodeType))
+                        .map((node, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                              {node.nodeType}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {new Date(node.startTime).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(node.status)}`}>
+                                {node.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {node.result ? (
+                                <details className="text-sm">
+                                  <summary className="cursor-pointer text-blue-600 hover:text-blue-800">
+                                    View Request/Response
+                                  </summary>
+                                  <div className="mt-2 bg-gray-50 p-2 rounded border border-gray-200">
+                                    <pre className="text-xs overflow-x-auto whitespace-pre-wrap">
+                                      {JSON.stringify(node.result, null, 2)}
+                                    </pre>
+                                  </div>
+                                </details>
+                              ) : (
+                                <span className="text-sm text-gray-400">No data</span>
+                              )}
+                              {node.error && (
+                                <div className="mt-1 text-xs text-red-600">
+                                  Error: {node.error}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
