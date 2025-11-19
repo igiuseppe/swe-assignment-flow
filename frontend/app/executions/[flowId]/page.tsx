@@ -152,15 +152,25 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
       }
     });
 
-    // Mark active edges based on branches
-    if (execution.branches) {
+    // Mark active edges based on branches - use actual flow edges
+    if (execution.branches && flow) {
       execution.branches.forEach((branch) => {
-        // Mark path as active
+        // Mark path as active by finding actual edges
         branch.path.forEach((pathNode, index) => {
           if (index < branch.path.length - 1) {
-            // Create edge ID from source->target (this is a simplification)
-            const edgeId = `${pathNode.nodeId}->${branch.path[index + 1].nodeId}`;
-            edgeStatuses[edgeId] = 'active';
+            const sourceNodeId = pathNode.nodeId;
+            const targetNodeId = typeof branch.path[index + 1] === 'string' 
+              ? branch.path[index + 1] 
+              : branch.path[index + 1].nodeId;
+            
+            // Find the actual edge in the flow
+            const edge = flow.edges.find(
+              (e) => e.source === sourceNodeId && e.target === targetNodeId
+            );
+            
+            if (edge) {
+              edgeStatuses[edge.id] = 'active';
+            }
           }
         });
       });
