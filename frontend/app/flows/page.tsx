@@ -147,6 +147,12 @@ export default function FlowsPage() {
                     >
                       Edit
                     </Link>
+                    <Link
+                      href={`/executions/${flow._id}`}
+                      className="text-purple-600 hover:underline text-sm"
+                    >
+                      Executions
+                    </Link>
                     <button
                       onClick={() => handleDelete(flow._id!)}
                       className="text-red-600 hover:underline text-sm"

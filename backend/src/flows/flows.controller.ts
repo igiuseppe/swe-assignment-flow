@@ -10,7 +10,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { FlowsService } from './flows.service';
 import { FlowExecutionService } from './execution.service';
 import { Execution, ExecutionDocument } from './schemas/execution.schema';
@@ -83,8 +83,10 @@ export class FlowsController {
 
   @Get(':id/executions')
   async getExecutions(@Param('id') flowId: string) {
+    // Convert string to ObjectId for proper query
+    const flowObjectId = new Types.ObjectId(flowId);
     return this.executionModel
-      .find({ flowId })
+      .find({ flowId: flowObjectId })
       .sort({ createdAt: -1 })
       .limit(50)
       .exec();
