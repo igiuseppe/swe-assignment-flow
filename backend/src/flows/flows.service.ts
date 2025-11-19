@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Flow, FlowDocument } from './schemas/flow.schema';
+import { Flow, FlowDocument, NodeType, NodeCategory } from './schemas/flow.schema';
 import { CreateFlowDto } from './dto/create-flow.dto';
 import { UpdateFlowDto } from './dto/update-flow.dto';
 import { ValidateFlowDto } from './dto/validate-flow.dto';
@@ -18,14 +18,16 @@ export class FlowsService {
     // Auto-create trigger and end nodes
     const triggerNode = {
       id: 'trigger',
-      type: 'TRIGGER' as any,
+      type: NodeType.TRIGGER,
+      category: NodeCategory.SYSTEM,
       position: { x: 250, y: 50 },
       config: {},
     };
 
     const endNode = {
       id: 'end',
-      type: 'END' as any,
+      type: NodeType.END,
+      category: NodeCategory.SYSTEM,
       position: { x: 250, y: 400 },
       config: {},
     };

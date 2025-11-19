@@ -3,6 +3,13 @@ import { Document } from 'mongoose';
 
 export type FlowDocument = Flow & Document;
 
+export enum NodeCategory {
+  ACTION = 'ACTION',
+  TIMING = 'TIMING',
+  LOGIC = 'LOGIC',
+  SYSTEM = 'SYSTEM', // for TRIGGER and END nodes
+}
+
 export enum NodeType {
   TRIGGER = 'TRIGGER',
   SEND_MESSAGE = 'SEND_MESSAGE',
@@ -12,6 +19,17 @@ export enum NodeType {
   ADD_CUSTOMER_NOTE = 'ADD_CUSTOMER_NOTE',
   END = 'END',
 }
+
+// Mapping of node types to categories
+export const NODE_TYPE_TO_CATEGORY: Record<NodeType, NodeCategory> = {
+  [NodeType.TRIGGER]: NodeCategory.SYSTEM,
+  [NodeType.SEND_MESSAGE]: NodeCategory.ACTION,
+  [NodeType.ADD_ORDER_NOTE]: NodeCategory.ACTION,
+  [NodeType.ADD_CUSTOMER_NOTE]: NodeCategory.ACTION,
+  [NodeType.TIME_DELAY]: NodeCategory.TIMING,
+  [NodeType.CONDITIONAL_SPLIT]: NodeCategory.LOGIC,
+  [NodeType.END]: NodeCategory.SYSTEM,
+};
 
 export enum TriggerType {
   NEW_ORDER = 'NEW_ORDER',
@@ -36,6 +54,9 @@ export class FlowNode {
 
   @Prop({ required: true, enum: NodeType })
   type: NodeType;
+
+  @Prop({ required: true, enum: NodeCategory })
+  category: NodeCategory;
 
   @Prop({ type: Position, required: true })
   position: Position;

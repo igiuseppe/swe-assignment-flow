@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Flow, ValidationResult, CreateFlowDto } from './types';
+import { Flow, ValidationResult, CreateFlowDto, Execution } from './types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
@@ -52,6 +52,26 @@ export const flowsApi = {
 
   async deactivate(id: string): Promise<Flow> {
     const response = await api.post<Flow>(`/flows/${id}/deactivate`);
+    return response.data;
+  },
+
+  async execute(id: string, triggerData: Record<string, any>): Promise<Execution> {
+    const response = await api.post<Execution>(`/flows/${id}/execute`, triggerData);
+    return response.data;
+  },
+
+  async getExecutions(flowId: string): Promise<Execution[]> {
+    const response = await api.get<Execution[]>(`/flows/${flowId}/executions`);
+    return response.data;
+  },
+
+  async getExecution(executionId: string): Promise<Execution> {
+    const response = await api.get<Execution>(`/flows/executions/${executionId}`);
+    return response.data;
+  },
+
+  async retryExecution(executionId: string): Promise<Execution> {
+    const response = await api.post<Execution>(`/flows/executions/${executionId}/retry`);
     return response.data;
   },
 };

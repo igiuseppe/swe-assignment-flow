@@ -1,3 +1,10 @@
+export enum NodeCategory {
+  ACTION = 'ACTION',
+  TIMING = 'TIMING',
+  LOGIC = 'LOGIC',
+  SYSTEM = 'SYSTEM',
+}
+
 export enum NodeType {
   TRIGGER = 'TRIGGER',
   SEND_MESSAGE = 'SEND_MESSAGE',
@@ -7,6 +14,16 @@ export enum NodeType {
   ADD_CUSTOMER_NOTE = 'ADD_CUSTOMER_NOTE',
   END = 'END',
 }
+
+export const NODE_TYPE_TO_CATEGORY: Record<NodeType, NodeCategory> = {
+  [NodeType.TRIGGER]: NodeCategory.SYSTEM,
+  [NodeType.SEND_MESSAGE]: NodeCategory.ACTION,
+  [NodeType.ADD_ORDER_NOTE]: NodeCategory.ACTION,
+  [NodeType.ADD_CUSTOMER_NOTE]: NodeCategory.ACTION,
+  [NodeType.TIME_DELAY]: NodeCategory.TIMING,
+  [NodeType.CONDITIONAL_SPLIT]: NodeCategory.LOGIC,
+  [NodeType.END]: NodeCategory.SYSTEM,
+};
 
 export enum TriggerType {
   NEW_ORDER = 'NEW_ORDER',
@@ -23,6 +40,7 @@ export interface Position {
 export interface FlowNode {
   id: string;
   type: NodeType;
+  category: NodeCategory;
   position: Position;
   config?: Record<string, any>;
   data?: {
@@ -63,3 +81,40 @@ export interface CreateFlowDto {
   description?: string;
 }
 
+export interface Branch {
+  branchId: string;
+  status: string;
+  currentNodeId: string;
+  path: string[];
+}
+
+export interface ExecutedNode {
+  nodeId: string;
+  nodeType: string;
+  status: string;
+  startTime: string;
+  endTime?: string;
+  result?: Record<string, any>;
+  error?: string;
+  idempotencyKey: string;
+  retryCount: number;
+  arrivalCount: number;
+}
+
+export interface Execution {
+  _id: string;
+  flowId: string;
+  status: 'running' | 'delayed' | 'completed' | 'failed';
+  triggerType: string;
+  triggerData: Record<string, any>;
+  branches: Branch[];
+  executedNodes: ExecutedNode[];
+  resumeAt?: string;
+  resumeData?: {
+    nextNodeIds: string[];
+    context: Record<string, any>;
+    branchId: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}

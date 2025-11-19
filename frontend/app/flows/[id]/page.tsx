@@ -114,6 +114,10 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
   const [showTriggerModal, setShowTriggerModal] = useState(false);
   const [editingTrigger, setEditingTrigger] = useState<TriggerType | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showExecutionModal, setShowExecutionModal] = useState(false);
+  const [executionResult, setExecutionResult] = useState<any>(null);
+  const [executing, setExecuting] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     if (flow) {
@@ -150,6 +154,49 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
     setLocalEdges(edges);
     setHasUnsavedChanges(true);
   }, []);
+
+  const handleTestFlow = async () => {
+    if (!flow?._id) return;
+
+    // Sample trigger data based on trigger type
+    const sampleData: Record<string, any> = {
+      order_id: 'ORD-12345',
+      customer_id: 'CUST-67890',
+      customer_name: 'John Doe',
+      customer_phone: '+1234567890',
+      order_total: 99.99,
+      order_status: 'pending',
+      order_items: ['Product A', 'Product B'],
+    };
+
+    try {
+      setExecuting(true);
+      const result = await flowsApi.execute(flow._id, sampleData);
+      setExecutionResult(result);
+      setShowExecutionModal(true);
+    } catch (err) {
+      alert('Failed to execute flow');
+      console.error(err);
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const handleRetryExecution = async () => {
+    if (!executionResult?._id) return;
+
+    try {
+      setRetrying(true);
+      const result = await flowsApi.retryExecution(executionResult._id);
+      setExecutionResult(result);
+      alert('Execution retried successfully!');
+    } catch (err) {
+      alert('Failed to retry execution');
+      console.error(err);
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -204,6 +251,14 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
               <span className="text-gray-600">Trigger:</span>
               <span className="font-medium">{flow.triggerType.replace(/_/g, ' ')}</span>
               <span className="text-gray-400">✏️</span>
+            </button>
+            <button
+              onClick={handleTestFlow}
+              disabled={executing || hasUnsavedChanges}
+              className="px-4 py-2 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={hasUnsavedChanges ? 'Save your changes before testing' : 'Test flow execution'}
+            >
+              {executing ? '⚙️ Running...' : '▶️ Test Flow'}
             </button>
             <button
               onClick={handleSave}
@@ -299,6 +354,141 @@ export default function FlowBuilderPage({ params }: { params: Promise<{ id: stri
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Execution Result Modal */}
+      {showExecutionModal && executionResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-bold">Flow Execution Results</h2>
+              <button
+                onClick={() => setShowExecutionModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="mb-4 p-4 bg-gray-50 rounded">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="font-semibold">Execution ID:</span> {executionResult._id}
+                </div>
+                <div>
+                  <span className="font-semibold">Status:</span>{' '}
+                  <span className={executionResult.status === 'completed' ? 'text-green-600' : executionResult.status === 'failed' ? 'text-red-600' : executionResult.status === 'delayed' ? 'text-yellow-600' : 'text-blue-600'}>
+                    {executionResult.status.toUpperCase()}
+                  </span>
+                </div>
+                <div>
+                  <span className="font-semibold">Start Time:</span>{' '}
+                  {new Date(executionResult.createdAt).toLocaleString()}
+                </div>
+                <div>
+                  <span className="font-semibold">Updated:</span>{' '}
+                  {new Date(executionResult.updatedAt).toLocaleString()}
+                </div>
+                {executionResult.resumeAt && (
+                  <div className="col-span-2">
+                    <span className="font-semibold">Resume At:</span>{' '}
+                    <span className="text-yellow-600">
+                      {new Date(executionResult.resumeAt).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {executionResult.branches && executionResult.branches.length > 0 && (
+              <div className="mb-4">
+                <h3 className="font-semibold mb-2">Branches</h3>
+                <div className="space-y-1">
+                  {executionResult.branches.map((branch: any, idx: number) => (
+                    <div key={idx} className="text-sm p-2 bg-blue-50 rounded">
+                      <span className="font-medium">{branch.branchId}:</span>{' '}
+                      <span className={branch.status === 'completed' ? 'text-green-600' : 'text-blue-600'}>
+                        {branch.status}
+                      </span>
+                      {' @ '}{branch.currentNodeId}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <h3 className="font-semibold mb-3">Executed Nodes</h3>
+              <div className="space-y-2">
+                {executionResult.executedNodes && executionResult.executedNodes.map((node: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded border ${
+                      node.status === 'completed'
+                        ? 'bg-green-50 border-green-200'
+                        : node.status === 'failed'
+                        ? 'bg-red-50 border-red-200'
+                        : node.status === 'running'
+                        ? 'bg-blue-50 border-blue-200'
+                        : 'bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="font-medium text-sm">
+                        {node.nodeType} ({node.nodeId})
+                        {node.retryCount > 0 && (
+                          <span className="ml-2 text-xs text-orange-600">
+                            Retries: {node.retryCount}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {new Date(node.startTime).toLocaleTimeString()}
+                        {node.endTime && ` - ${new Date(node.endTime).toLocaleTimeString()}`}
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-600 mb-1">
+                      Status: <span className={node.status === 'completed' ? 'text-green-600' : node.status === 'failed' ? 'text-red-600' : 'text-blue-600'}>{node.status}</span>
+                    </div>
+                    {node.error && (
+                      <div className="text-xs text-red-600 mb-1">
+                        Error: {node.error}
+                      </div>
+                    )}
+                    {node.result && (
+                      <details className="mt-2">
+                        <summary className="text-xs text-gray-600 cursor-pointer">Show result</summary>
+                        <pre className="mt-2 text-xs bg-white p-2 rounded overflow-x-auto">
+                          {JSON.stringify(node.result, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-between">
+              <div>
+                {executionResult.status === 'failed' && (
+                  <button
+                    onClick={handleRetryExecution}
+                    disabled={retrying}
+                    className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50"
+                  >
+                    {retrying ? '🔄 Retrying...' : '🔄 Retry Failed Execution'}
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => setShowExecutionModal(false)}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Close
               </button>
             </div>
           </div>

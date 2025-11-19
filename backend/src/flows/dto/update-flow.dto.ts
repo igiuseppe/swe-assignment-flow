@@ -1,6 +1,6 @@
 import { IsString, IsEnum, IsOptional, IsArray, ValidateNested, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
-import { NodeType, TriggerType } from '../schemas/flow.schema';
+import { NodeType, NodeCategory, TriggerType } from '../schemas/flow.schema';
 
 export class PositionDto {
   @IsOptional()
@@ -16,6 +16,9 @@ export class FlowNodeDto {
 
   @IsEnum(NodeType)
   type: NodeType;
+
+  @IsEnum(NodeCategory)
+  category: NodeCategory;
 
   @ValidateNested()
   @Type(() => PositionDto)

@@ -14,7 +14,7 @@ import {
   BackgroundVariant,
   Panel,
 } from '@xyflow/react';
-import { FlowNode as FlowNodeType, FlowEdge as FlowEdgeType, NodeType } from '@/lib/types';
+import { FlowNode as FlowNodeType, FlowEdge as FlowEdgeType, NodeType, NodeCategory, NODE_TYPE_TO_CATEGORY } from '@/lib/types';
 import CustomNode from './CustomNode';
 
 const nodeTypes = {
@@ -543,6 +543,7 @@ export default function FlowCanvas({
     const flowNodes: FlowNodeType[] = nodes.map((n) => ({
       id: n.id,
       type: n.data.type as NodeType,
+      category: NODE_TYPE_TO_CATEGORY[n.data.type as NodeType],
       position: n.position,
       config: n.data.config || {},
     }));
@@ -582,6 +583,7 @@ export default function FlowCanvas({
       data: {
         label: getNodeLabel(type),
         type: type,
+        category: NODE_TYPE_TO_CATEGORY[type],
         config: {},
       },
     };
@@ -630,6 +632,7 @@ export default function FlowCanvas({
     const flowNodes: FlowNodeType[] = nodes.map((n) => ({
       id: n.id,
       type: n.data.type as NodeType,
+      category: NODE_TYPE_TO_CATEGORY[n.data.type as NodeType],
       position: n.position,
       config: n.data.config || {},
     }));
@@ -659,41 +662,61 @@ export default function FlowCanvas({
         <Background variant={BackgroundVariant.Dots} />
         <Controls />
         
-        <Panel position="top-left" className="bg-white p-4 rounded-lg shadow-lg">
+        <Panel position="top-left" className="bg-white p-4 rounded-lg shadow-lg max-w-xs">
           <h3 className="font-semibold mb-3">Add Nodes</h3>
-          <div className="flex flex-col gap-2">
-            <button
-              onClick={() => addNode(NodeType.SEND_MESSAGE)}
-              className="px-3 py-2 bg-blue-100 text-blue-800 rounded hover:bg-blue-200 text-sm"
-            >
-              + Send Message
-            </button>
-            <button
-              onClick={() => addNode(NodeType.TIME_DELAY)}
-              className="px-3 py-2 bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200 text-sm"
-            >
-              + Time Delay
-            </button>
-            <button
-              onClick={() => addNode(NodeType.CONDITIONAL_SPLIT)}
-              className="px-3 py-2 bg-green-100 text-green-800 rounded hover:bg-green-200 text-sm"
-            >
-              + Conditional
-            </button>
-            <button
-              onClick={() => addNode(NodeType.ADD_ORDER_NOTE)}
-              className="px-3 py-2 bg-orange-100 text-orange-800 rounded hover:bg-orange-200 text-sm"
-            >
-              + Order Note
-            </button>
-            <button
-              onClick={() => addNode(NodeType.ADD_CUSTOMER_NOTE)}
-              className="px-3 py-2 bg-pink-100 text-pink-800 rounded hover:bg-pink-200 text-sm"
-            >
-              + Customer Note
-            </button>
+          
+          {/* ACTION Nodes */}
+          <div className="mb-3">
+            <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase">Action</h4>
+            <div className="flex flex-col gap-1.5">
+              <button
+                onClick={() => addNode(NodeType.SEND_MESSAGE)}
+                className="px-3 py-2 bg-blue-100 text-blue-800 rounded hover:bg-blue-200 text-sm text-left"
+              >
+                + Send Message
+              </button>
+              <button
+                onClick={() => addNode(NodeType.ADD_ORDER_NOTE)}
+                className="px-3 py-2 bg-blue-100 text-blue-800 rounded hover:bg-blue-200 text-sm text-left"
+              >
+                + Order Note
+              </button>
+              <button
+                onClick={() => addNode(NodeType.ADD_CUSTOMER_NOTE)}
+                className="px-3 py-2 bg-blue-100 text-blue-800 rounded hover:bg-blue-200 text-sm text-left"
+              >
+                + Customer Note
+              </button>
+            </div>
           </div>
-          <div className="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500">
+
+          {/* TIMING Nodes */}
+          <div className="mb-3">
+            <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase">Timing</h4>
+            <div className="flex flex-col gap-1.5">
+              <button
+                onClick={() => addNode(NodeType.TIME_DELAY)}
+                className="px-3 py-2 bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200 text-sm text-left"
+              >
+                + Delay
+              </button>
+            </div>
+          </div>
+
+          {/* LOGIC Nodes */}
+          <div className="mb-3">
+            <h4 className="text-xs font-semibold text-gray-600 mb-2 uppercase">Logic</h4>
+            <div className="flex flex-col gap-1.5">
+              <button
+                onClick={() => addNode(NodeType.CONDITIONAL_SPLIT)}
+                className="px-3 py-2 bg-green-100 text-green-800 rounded hover:bg-green-200 text-sm text-left"
+              >
+                + Conditional Split
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-gray-200 text-xs text-gray-500">
             <p>Click a node to configure it</p>
             <p className="mt-1">Press Delete/Backspace to remove selected edge</p>
           </div>
