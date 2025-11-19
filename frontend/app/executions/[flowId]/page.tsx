@@ -16,6 +16,7 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
   const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [selectedFailedNodes, setSelectedFailedNodes] = useState<string[]>([]);
 
   useEffect(() => {
     loadData();
@@ -83,18 +84,23 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
       const execution = await flowsApi.getExecution(executionId);
       setSelectedExecution(execution);
       setShowDetailModal(true);
+      setSelectedFailedNodes([]); // Reset selection when opening new execution
     } catch (err) {
       console.error(err);
       alert('Failed to load execution details');
     }
   };
 
-  const handleRetry = async (executionId: string) => {
+  const handleRetry = async (executionId: string, nodeIds?: string[]) => {
     try {
-      const updated = await flowsApi.retryExecution(executionId);
+      const updated = await flowsApi.retryExecution(executionId, nodeIds);
       setSelectedExecution(updated);
+      setSelectedFailedNodes([]); // Clear selection after retry
       await loadExecutions();
-      alert('Execution retried successfully!');
+      const message = nodeIds 
+        ? `Execution retried successfully! (${nodeIds.length} node${nodeIds.length > 1 ? 's' : ''})`
+        : 'Execution retried successfully! (all failed nodes)';
+      alert(message);
     } catch (err) {
       console.error(err);
       alert('Failed to retry execution');
@@ -365,6 +371,34 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
               )}
             </div>
 
+            {/* Error Details */}
+            {selectedExecution.errorDetails && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <h3 className="font-semibold mb-2 text-red-800">Error Summary</h3>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="font-medium text-red-700">Last Error:</span>
+                    <span className="ml-2 text-red-900">{selectedExecution.errorDetails.lastError}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-red-700">Failed Branches:</span>
+                    <span className="ml-2 text-red-900">
+                      {selectedExecution.errorDetails.failedBranches.join(', ') || 'None'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-red-700">Failed Nodes:</span>
+                    <span className="ml-2 text-red-900">
+                      {selectedExecution.errorDetails.failedNodes.length} node(s)
+                    </span>
+                  </div>
+                  <div className="text-xs text-red-600">
+                    {new Date(selectedExecution.errorDetails.timestamp).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Trigger Data */}
             <div className="mb-6">
               <h3 className="font-semibold mb-2 text-gray-700">Trigger Data</h3>
@@ -422,22 +456,39 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
                     )}`}
                   >
                     <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <div className="font-medium text-gray-900">
-                          {node.nodeType}
-                          {node.retryCount > 0 && (
-                            <span className="ml-2 text-xs text-orange-600 font-normal">
-                              (Retried {node.retryCount}x)
-                            </span>
-                          )}
-                          {node.arrivalCount > 0 && node.nodeType === 'END' && (
-                            <span className="ml-2 text-xs text-blue-600 font-normal">
-                              (Arrivals: {node.arrivalCount})
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-gray-500 font-mono mt-1">
-                          ID: {node.nodeId}
+                      <div className="flex items-start gap-3">
+                        {node.status === 'failed' && selectedExecution.status === 'failed' && (
+                          <input
+                            type="checkbox"
+                            checked={selectedFailedNodes.includes(node.nodeId)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedFailedNodes([...selectedFailedNodes, node.nodeId]);
+                              } else {
+                                setSelectedFailedNodes(selectedFailedNodes.filter(id => id !== node.nodeId));
+                              }
+                            }}
+                            className="mt-1 w-4 h-4 cursor-pointer"
+                            title="Select for retry"
+                          />
+                        )}
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {node.nodeType}
+                            {node.retryCount > 0 && (
+                              <span className="ml-2 text-xs text-orange-600 font-normal">
+                                (Retried {node.retryCount}x)
+                              </span>
+                            )}
+                            {node.arrivalCount > 0 && node.nodeType === 'END' && (
+                              <span className="ml-2 text-xs text-blue-600 font-normal">
+                                (Arrivals: {node.arrivalCount})
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500 font-mono mt-1">
+                            ID: {node.nodeId}
+                          </div>
                         </div>
                       </div>
                       <div className="text-right">
@@ -478,23 +529,38 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
             </div>
 
             {/* Actions */}
-            <div className="mt-6 pt-4 border-t border-gray-200 flex justify-between">
-              <div>
-                {selectedExecution.status === 'failed' && (
-                  <button
-                    onClick={() => handleRetry(selectedExecution._id)}
-                    className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700"
-                  >
-                    🔄 Retry Failed Execution
-                  </button>
-                )}
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              {selectedExecution.status === 'failed' && (
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600 mb-3">
+                    Select specific failed nodes above to retry them individually, or retry all failed nodes at once:
+                  </p>
+                  <div className="flex gap-3 flex-wrap">
+                    <button
+                      onClick={() => handleRetry(selectedExecution._id)}
+                      className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 transition"
+                    >
+                      🔄 Retry All Failed Nodes
+                    </button>
+                    {selectedFailedNodes.length > 0 && (
+                      <button
+                        onClick={() => handleRetry(selectedExecution._id, selectedFailedNodes)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                      >
+                        🔄 Retry Selected ({selectedFailedNodes.length})
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowDetailModal(false)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                >
+                  Close
+                </button>
               </div>
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>

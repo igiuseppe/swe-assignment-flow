@@ -17,6 +17,7 @@ import { Execution, ExecutionDocument } from './schemas/execution.schema';
 import { CreateFlowDto } from './dto/create-flow.dto';
 import { UpdateFlowDto } from './dto/update-flow.dto';
 import { ValidateFlowDto } from './dto/validate-flow.dto';
+import { RetryExecutionDto } from './dto/retry-execution.dto';
 
 @Controller('flows')
 export class FlowsController {
@@ -98,8 +99,11 @@ export class FlowsController {
   }
 
   @Post('executions/:executionId/retry')
-  async retryExecution(@Param('executionId') id: string) {
-    return this.executionService.retryExecution(id);
+  async retryExecution(
+    @Param('executionId') id: string,
+    @Body() retryDto: RetryExecutionDto,
+  ) {
+    return this.executionService.retryExecution(id, retryDto.nodeIds);
   }
 }
 

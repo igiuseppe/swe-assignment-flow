@@ -115,6 +115,13 @@ export interface Execution {
     context: Record<string, any>;
     branchId: string;
   };
+  error?: string;
+  errorDetails?: {
+    failedBranches: string[];
+    failedNodes: { nodeId: string; nodeType: string; error: string; }[];
+    lastError: string;
+    timestamp: string;
+  };
   createdAt: string;
   updatedAt: string;
 }

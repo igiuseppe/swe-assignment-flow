@@ -70,8 +70,11 @@ export const flowsApi = {
     return response.data;
   },
 
-  async retryExecution(executionId: string): Promise<Execution> {
-    const response = await api.post<Execution>(`/flows/executions/${executionId}/retry`);
+  async retryExecution(executionId: string, nodeIds?: string[]): Promise<Execution> {
+    const response = await api.post<Execution>(
+      `/flows/executions/${executionId}/retry`,
+      { nodeIds }
+    );
     return response.data;
   },
 };

@@ -88,6 +88,17 @@ export class Execution {
     branchId: string;
   };
 
+  @Prop()
+  error?: string;
+
+  @Prop({ type: Object })
+  errorDetails?: {
+    failedBranches: string[];
+    failedNodes: { nodeId: string; nodeType: string; error: string; }[];
+    lastError: string;
+    timestamp: Date;
+  };
+
   createdAt: Date;
   updatedAt: Date;
 }

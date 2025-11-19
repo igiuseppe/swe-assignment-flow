@@ -79,7 +79,7 @@ export class FlowExecutionService {
     return this.executeNode(node, flow, executionId, data, branchId);
   }
 
-  async retryExecution(executionId: string): Promise<ExecutionDocument> {
+  async retryExecution(executionId: string, nodeIds?: string[]): Promise<ExecutionDocument> {
     this.logger.log(`🔄 Retrying execution: ${executionId}`);
 
     // Get the execution
@@ -94,63 +94,106 @@ export class FlowExecutionService {
       throw new Error('Flow not found');
     }
 
-    // Find the first failed node
-    const failedNode = execution.executedNodes.find(n => n.status === 'failed');
-    if (!failedNode) {
-      throw new Error('No failed node found to retry');
+    // Determine which nodes to retry
+    let nodesToRetry = execution.executedNodes.filter(n => n.status === 'failed');
+    
+    if (nodeIds && nodeIds.length > 0) {
+      // User selected specific nodes to retry
+      nodesToRetry = nodesToRetry.filter(n => nodeIds.includes(n.nodeId));
+      if (nodesToRetry.length === 0) {
+        throw new Error('None of the specified nodes are in failed state');
+      }
     }
 
-    this.logger.log(`Found failed node: ${failedNode.nodeId}`);
+    if (nodesToRetry.length === 0) {
+      throw new Error('No failed nodes found to retry');
+    }
 
-    // Find the failed branch
-    const failedBranch = execution.branches.find(b => b.status === 'failed');
-    const branchId = failedBranch?.branchId || 'root';
+    this.logger.log(`Found ${nodesToRetry.length} failed node(s) to retry: ${nodesToRetry.map(n => n.nodeId).join(', ')}`);
 
-    // Reset the failed node to allow retry
-    await this.executionModel.updateOne(
-      { _id: executionId, 'executedNodes.nodeId': failedNode.nodeId },
-      {
-        $set: {
-          'executedNodes.$.status': 'running',
-          'executedNodes.$.error': null,
-          'executedNodes.$.retryCount': 0,
-        },
-      },
-    );
+    // Group nodes by their branch for proper retry
+    const nodesByBranch = new Map<string, typeof nodesToRetry>();
+    
+    for (const failedNode of nodesToRetry) {
+      // Find which branch this node belongs to
+      const branch = execution.branches.find(b => 
+        b.path.includes(failedNode.nodeId) || b.currentNodeId === failedNode.nodeId
+      );
+      const branchId = branch?.branchId || 'root';
+      
+      if (!nodesByBranch.has(branchId)) {
+        nodesByBranch.set(branchId, []);
+      }
+      nodesByBranch.get(branchId)!.push(failedNode);
+    }
 
-    // Reset the failed branch
-    if (failedBranch) {
+    // Reset all selected failed nodes for fresh retry
+    for (const failedNode of nodesToRetry) {
       await this.executionModel.updateOne(
-        { _id: executionId, 'branches.branchId': branchId },
-        { $set: { 'branches.$.status': 'running' } }
+        { _id: executionId, 'executedNodes.nodeId': failedNode.nodeId },
+        {
+          $set: {
+            'executedNodes.$.status': 'running',
+            'executedNodes.$.error': null,
+            'executedNodes.$.startTime': new Date(),
+          },
+          $unset: {
+            'executedNodes.$.endTime': '',
+            'executedNodes.$.result': '',
+          },
+          $inc: {
+            'executedNodes.$.retryCount': 1,
+          },
+        },
       );
     }
 
-    // Update execution status back to running
+    // Clean up old branch state to prevent duplicates on retry
+    // Remove all branches that will be recreated during retry execution
+    const branchesToReset = Array.from(nodesByBranch.keys());
     await this.executionModel.updateOne(
       { _id: executionId },
-      { $set: { status: 'running', error: null } }
+      { 
+        $pull: { branches: { branchId: { $in: branchesToReset } } }
+      }
     );
 
-    // Find the node in the flow
-    const node = flow.nodes.find((n) => n.id === failedNode.nodeId);
-    if (!node) {
-      throw new Error(`Node ${failedNode.nodeId} not found in flow`);
-    }
+    this.logger.log(`Cleaned up ${branchesToReset.length} old branch(es) for fresh retry`);
 
-    // Retry from this node with original trigger data
+    // Update execution status back to running and clear error details
+    await this.executionModel.updateOne(
+      { _id: executionId },
+      { 
+        $set: { status: 'running' },
+        $unset: { error: '', errorDetails: '' }
+      }
+    );
+
+    // Retry all selected nodes in parallel (grouped by branch)
     try {
-      await this.executeNode(node, flow, executionId, execution.triggerData, branchId);
+      const retryPromises = [];
       
-      // Completion is now handled by the END node when all branches arrive
-      this.logger.log(`Retry execution resumed for ${executionId}`);
+      for (const [branchId, branchNodes] of nodesByBranch.entries()) {
+        for (const failedNode of branchNodes) {
+          const node = flow.nodes.find((n) => n.id === failedNode.nodeId);
+          if (!node) {
+            this.logger.warn(`Node ${failedNode.nodeId} not found in flow, skipping`);
+            continue;
+          }
+
+          this.logger.log(`Retrying node ${failedNode.nodeId} in branch ${branchId}`);
+          retryPromises.push(
+            this.executeNode(node, flow, executionId, execution.triggerData, branchId)
+          );
+        }
+      }
+
+      await Promise.all(retryPromises);
+      
+      this.logger.log(`✅ Retry execution completed for ${executionId}`);
     } catch (error) {
       this.logger.error(`Retry failed for execution ${executionId}:`, error);
-      // Keep as failed
-      await this.executionModel.updateOne(
-        { _id: executionId },
-        { $set: { status: 'failed', error: error.message } }
-      );
+      // Error details will be set by executeNode's catch block
     }
 
     return (await this.executionModel.findById(executionId))!;
@@ -345,29 +388,7 @@ export class FlowExecutionService {
     } catch (error) {
       this.logger.error(`Error executing node ${node.id}:`, error);
 
-      // Get current retry count
-      const exec = await this.executionModel.findOne({
-        _id: executionId,
-        'executedNodes.nodeId': node.id,
-      });
-
-      const nodeExec = exec?.executedNodes.find(n => n.nodeId === node.id);
-      const retryCount = nodeExec?.retryCount || 0;
-
-      if (retryCount < 3) {
-        // Retry with exponential backoff
-        this.logger.log(`Retrying node ${node.id}, attempt ${retryCount + 1}/3`);
-        await new Promise((resolve) => setTimeout(resolve, 1000 * (retryCount + 1)));
-
-        await this.executionModel.updateOne(
-          { _id: executionId, 'executedNodes.nodeId': node.id },
-          { $inc: { 'executedNodes.$.retryCount': 1 } },
-        );
-
-        return this.executeNode(node, flow, executionId, data, branchId);
-      }
-
-      // Failed after retries
+      // Fail fast - no automatic retries
       await this.executionModel.updateOne(
         { _id: executionId, 'executedNodes.nodeId': node.id },
         {
@@ -385,11 +406,38 @@ export class FlowExecutionService {
         { $set: { 'branches.$.status': 'failed' } }
       );
 
-      // Mark execution as failed
-      await this.executionModel.updateOne(
-        { _id: executionId },
-        { $set: { status: 'failed', error: error.message } }
-      );
+      // Get current execution state to build errorDetails
+      const exec = await this.executionModel.findById(executionId);
+      if (exec) {
+        const failedBranches = exec.branches
+          .filter(b => b.status === 'failed')
+          .map(b => b.branchId);
+        
+        const failedNodes = exec.executedNodes
+          .filter(n => n.status === 'failed')
+          .map(n => ({
+            nodeId: n.nodeId,
+            nodeType: n.nodeType,
+            error: n.error || 'Unknown error',
+          }));
+
+        // Mark execution as failed with detailed error tracking
+        await this.executionModel.updateOne(
+          { _id: executionId },
+          { 
+            $set: { 
+              status: 'failed', 
+              error: error.message,
+              errorDetails: {
+                failedBranches,
+                failedNodes,
+                lastError: error.message,
+                timestamp: new Date(),
+              }
+            } 
+          }
+        );
+      }
 
       throw error;
     }
@@ -665,7 +713,13 @@ export class FlowExecutionService {
       const nextNode = flow.nodes.find((n) => n.id === resultEdge.target);
       if (nextNode) {
         this.logger.log(`   → Following ${finalResult ? 'TRUE' : 'FALSE'} path to ${nextNode.id}`);
-        await this.executeNode(nextNode, flow, executionId, data, branchId);
+        try {
+          await this.executeNode(nextNode, flow, executionId, data, branchId);
+        } catch (error) {
+          // Don't re-throw - let downstream node handle its own failure
+          // The conditional split itself succeeded in evaluating the condition
+          this.logger.warn(`   ⚠️  Downstream node ${nextNode.id} failed, but conditional completed successfully`);
+        }
       }
     } else {
       this.logger.warn(`   ⚠️  No edge found for ${finalResult ? 'TRUE' : 'FALSE'} path - marking branch as completed`);

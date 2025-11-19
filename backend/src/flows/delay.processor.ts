@@ -61,10 +61,21 @@ export class DelayProcessor {
     } catch (error) {
       this.logger.error(`Failed to resume execution ${executionId}:`, error);
       
-      // Mark execution as failed
+      // Mark execution as failed with error details
       await this.executionModel.updateOne(
         { _id: executionId },
-        { status: 'failed' },
+        { 
+          $set: {
+            status: 'failed',
+            error: error.message,
+            errorDetails: {
+              failedBranches: [branchId],
+              failedNodes: [],
+              lastError: `Failed to resume after delay: ${error.message}`,
+              timestamp: new Date(),
+            }
+          }
+        },
       );
     }
   }
