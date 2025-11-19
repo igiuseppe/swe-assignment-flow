@@ -5,10 +5,17 @@ import { Handle, Position, NodeProps } from '@xyflow/react';
 import { NodeType } from '@/lib/types';
 
 function CustomNode({ data }: NodeProps) {
-  const { label, type, isSystemNode } = data as { label: string; type: NodeType | string; isSystemNode?: boolean };
+  const { label, type, isSystemNode, config } = data as { 
+    label: string; 
+    type: NodeType | string; 
+    isSystemNode?: boolean;
+    config?: Record<string, any>;
+  };
 
   const isTrigger = type === NodeType.TRIGGER || type === 'TRIGGER';
   const isEnd = type === NodeType.END || type === 'END';
+  const isConditional = type === NodeType.CONDITIONAL_SPLIT;
+  const isTimeDelay = type === NodeType.TIME_DELAY;
 
   const getNodeColor = (nodeType: NodeType | string) => {
     switch (nodeType) {
@@ -33,14 +40,72 @@ function CustomNode({ data }: NodeProps) {
     }
   };
 
+  const renderTimeDelayInfo = () => {
+    if (!isTimeDelay || !config) return null;
+    const duration = config.duration || 0;
+    const unit = config.unit || 'minutes';
+    return (
+      <div className="text-xs mt-1 opacity-90">
+        ⏱️ {duration} {unit}
+      </div>
+    );
+  };
+
+  const renderConditionalInfo = () => {
+    if (!isConditional || !config) return null;
+    const field = config.field || 'field';
+    const operator = config.operator || 'equals';
+    const value = config.value || 'value';
+    return (
+      <div className="text-xs mt-1 opacity-90">
+        {field} {operator} {value}
+      </div>
+    );
+  };
+
   return (
     <div
-      className={`px-4 py-2 rounded-lg border-2 ${getNodeColor(type)} text-white shadow-lg min-w-[150px] ${isSystemNode ? 'opacity-90' : ''}`}
+      className={`px-4 py-2 rounded-lg border-2 ${getNodeColor(type)} text-white shadow-lg min-w-[150px] ${isSystemNode ? 'opacity-90' : ''} ${isConditional ? 'relative' : ''}`}
     >
       {/* Trigger node has no target handle, End node has no source handle */}
       {!isTrigger && <Handle type="target" position={Position.Top} className="w-3 h-3" />}
+      
       <div className="font-semibold text-sm">{label}</div>
-      {!isEnd && <Handle type="source" position={Position.Bottom} className="w-3 h-3" />}
+      
+      {/* Show time delay info */}
+      {renderTimeDelayInfo()}
+      
+      {/* Show conditional info */}
+      {renderConditionalInfo()}
+      
+      {/* Conditional split has two output handles (true/false) */}
+      {isConditional ? (
+        <>
+          <Handle 
+            type="source" 
+            position={Position.Bottom} 
+            id="true"
+            className="w-3 h-3"
+            style={{ left: '33%' }}
+          />
+          <div className="absolute bottom-[-20px] left-[calc(33%-15px)] text-xs bg-green-600 px-1 rounded">
+            ✓
+          </div>
+          
+          <Handle 
+            type="source" 
+            position={Position.Bottom}
+            id="false"
+            className="w-3 h-3"
+            style={{ left: '67%' }}
+          />
+          <div className="absolute bottom-[-20px] left-[calc(67%-15px)] text-xs bg-red-600 px-1 rounded">
+            ✗
+          </div>
+        </>
+      ) : (
+        !isEnd && <Handle type="source" position={Position.Bottom} className="w-3 h-3" />
+      )}
     </div>
   );
 }

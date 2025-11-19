@@ -234,13 +234,29 @@ export default function FlowCanvas({
   };
 
   const convertToReactFlowEdges = (edges: FlowEdgeType[]): Edge[] => {
-    return edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      label: edge.label,
-      type: 'smoothstep',
-    }));
+    return edges.map((edge) => {
+      // Automatically label edges from conditional splits based on sourceHandle
+      let label = edge.label;
+      if (edge.sourceHandle === 'true') {
+        label = '✓ True';
+      } else if (edge.sourceHandle === 'false') {
+        label = '✗ False';
+      }
+      
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        label,
+        type: 'smoothstep',
+        style: edge.sourceHandle === 'true' 
+          ? { stroke: '#16a34a', strokeWidth: 2 }
+          : edge.sourceHandle === 'false'
+          ? { stroke: '#dc2626', strokeWidth: 2 }
+          : undefined,
+      };
+    });
   };
 
   const [nodes, setNodes, onNodesChangeInternal] = useNodesState(
@@ -340,6 +356,7 @@ export default function FlowCanvas({
         source: e.source,
         target: e.target,
         label: e.label as string,
+        sourceHandle: e.sourceHandle as string | undefined,
       }));
       onEdgesChange(flowEdges);
     },
@@ -403,6 +420,7 @@ export default function FlowCanvas({
       source: e.source,
       target: e.target,
       label: e.label as string,
+      sourceHandle: e.sourceHandle as string | undefined,
     }));
     console.log('[FlowCanvas] Syncing edges to parent:', flowEdges);
     onEdgesChangeRef.current(flowEdges);
@@ -472,6 +490,7 @@ export default function FlowCanvas({
       source: e.source,
       target: e.target,
       label: e.label as string,
+      sourceHandle: e.sourceHandle as string | undefined,
     }));
     onNodesChange(flowNodes);
     onEdgesChange(flowEdges);

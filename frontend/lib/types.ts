@@ -36,6 +36,7 @@ export interface FlowEdge {
   source: string;
   target: string;
   label?: string;
+  sourceHandle?: string;
 }
 
 export interface Flow {

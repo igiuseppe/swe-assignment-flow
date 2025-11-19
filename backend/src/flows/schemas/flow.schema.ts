@@ -57,6 +57,9 @@ export class FlowEdge {
 
   @Prop()
   label?: string;
+
+  @Prop()
+  sourceHandle?: string;
 }
 
 @Schema({ timestamps: true, collection: 'flows' })
