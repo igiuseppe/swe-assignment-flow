@@ -1,13 +1,116 @@
 import { Injectable } from '@nestjs/common';
-import { Flow, FlowEdge, NodeType } from './schemas/flow.schema';
+import { Flow, FlowEdge, FlowNode, NodeType } from './schemas/flow.schema';
 
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
 }
 
+interface NodeConfigValidator {
+  validate: (node: FlowNode) => string[];
+}
+
 @Injectable()
 export class FlowValidatorService {
+  private readonly nodeValidators: Record<NodeType, NodeConfigValidator> = {
+    [NodeType.TRIGGER]: {
+      validate: () => [],
+    },
+    [NodeType.END]: {
+      validate: () => [],
+    },
+    [NodeType.SEND_MESSAGE]: {
+      validate: (node) => {
+        const errors: string[] = [];
+        const { message, variables } = node.config || {};
+        
+        if (!message || typeof message !== 'string' || message.trim() === '') {
+          errors.push(`Node ${node.id} (SEND_MESSAGE): message is required and must be a non-empty string`);
+        } else {
+          // Validate variable placeholders
+          const placeholders = message.match(/\{[^}]+\}/g) || [];
+          const declaredVars = (variables || '').split(',').map((v: string) => v.trim()).filter(Boolean);
+          
+          // Check if all placeholders are declared (optional warning-level validation)
+          placeholders.forEach((placeholder) => {
+            const varName = placeholder.slice(1, -1).trim();
+            if (!declaredVars.includes(`{${varName}}`)) {
+              // This is informational; could be converted to warning in production
+            }
+          });
+        }
+        
+        return errors;
+      },
+    },
+    [NodeType.TIME_DELAY]: {
+      validate: (node) => {
+        const errors: string[] = [];
+        const { duration, unit } = node.config || {};
+        
+        if (duration === undefined || duration === null) {
+          errors.push(`Node ${node.id} (TIME_DELAY): duration is required`);
+        } else if (typeof duration !== 'number' || duration < 0) {
+          errors.push(`Node ${node.id} (TIME_DELAY): duration must be a non-negative number`);
+        } else if (duration === 0) {
+          errors.push(`Node ${node.id} (TIME_DELAY): duration must be greater than 0`);
+        }
+        
+        const validUnits = ['seconds', 'minutes', 'hours', 'days'];
+        if (!unit || !validUnits.includes(unit)) {
+          errors.push(`Node ${node.id} (TIME_DELAY): unit must be one of: ${validUnits.join(', ')}`);
+        }
+        
+        return errors;
+      },
+    },
+    [NodeType.CONDITIONAL_SPLIT]: {
+      validate: (node) => {
+        const errors: string[] = [];
+        const { field, operator, value } = node.config || {};
+        
+        if (!field || typeof field !== 'string' || field.trim() === '') {
+          errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): field is required and must be a non-empty string`);
+        }
+        
+        const validOperators = ['equals', 'not_equals', 'greater_than', 'less_than', 'greater_or_equal', 'less_or_equal', 'contains'];
+        if (!operator || typeof operator !== 'string' || !validOperators.includes(operator.trim())) {
+          errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): operator must be one of: ${validOperators.join(', ')}`);
+        }
+        
+        if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
+          errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): value is required`);
+        }
+        
+        return errors;
+      },
+    },
+    [NodeType.ADD_ORDER_NOTE]: {
+      validate: (node) => {
+        const errors: string[] = [];
+        const { note } = node.config || {};
+        
+        if (!note || typeof note !== 'string' || note.trim() === '') {
+          errors.push(`Node ${node.id} (ADD_ORDER_NOTE): note is required and must be a non-empty string`);
+        }
+        
+        return errors;
+      },
+    },
+    [NodeType.ADD_CUSTOMER_NOTE]: {
+      validate: (node) => {
+        const errors: string[] = [];
+        const { note } = node.config || {};
+        
+        if (!note || typeof note !== 'string' || note.trim() === '') {
+          errors.push(`Node ${node.id} (ADD_CUSTOMER_NOTE): note is required and must be a non-empty string`);
+        }
+        
+        return errors;
+      },
+    },
+  };
+
   validate(flow: Flow): ValidationResult {
     const errors: string[] = [];
 
@@ -31,6 +134,30 @@ export class FlowValidatorService {
     } else if (endNodes.length > 1) {
       errors.push('Flow can only have one END node');
     }
+
+    // 2.5. Validate node configurations
+    flow.nodes.forEach((node) => {
+      const validator = this.nodeValidators[node.type];
+      if (validator) {
+        const nodeErrors = validator.validate(node);
+        errors.push(...nodeErrors);
+      }
+    });
+
+    // 2.6. Validate conditional split nodes have at least one output path
+    const conditionalNodes = flow.nodes.filter((n) => n.type === NodeType.CONDITIONAL_SPLIT);
+    conditionalNodes.forEach((node) => {
+      const outgoingEdges = flow.edges.filter((e) => e.source === node.id);
+      console.log(`[Validator] Checking conditional split node ${node.id}`);
+      console.log(`[Validator] Outgoing edges:`, outgoingEdges);
+      const hasTruePath = outgoingEdges.some((e) => e.sourceHandle === 'true');
+      const hasFalsePath = outgoingEdges.some((e) => e.sourceHandle === 'false');
+      console.log(`[Validator] Has true path: ${hasTruePath}, Has false path: ${hasFalsePath}`);
+      
+      if (!hasTruePath && !hasFalsePath) {
+        errors.push(`Node ${node.id} (CONDITIONAL_SPLIT): must have at least one output path (true or false)`);
+      }
+    });
 
     // 3. Check for dangling edges (edges referencing non-existent nodes)
     const nodeIds = new Set(flow.nodes.map((n) => n.id));

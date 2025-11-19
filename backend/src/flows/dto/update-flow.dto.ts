@@ -38,6 +38,10 @@ export class FlowEdgeDto {
   @IsOptional()
   @IsString()
   label?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceHandle?: string;
 }
 
 export class UpdateFlowDto {

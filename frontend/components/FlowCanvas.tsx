@@ -40,11 +40,32 @@ function NodeConfigModal({
   onSave: (config: Record<string, any>) => void;
   onDelete?: () => void;
 }) {
-  const [config, setConfig] = useState<Record<string, any>>(node?.data?.config || {});
+  const nodeType = node?.data?.type as NodeType;
+  
+  // Initialize config with defaults for each node type
+  const getInitialConfig = () => {
+    const existingConfig = node?.data?.config || {};
+    
+    switch (nodeType) {
+      case NodeType.TIME_DELAY:
+        return {
+          duration: existingConfig.duration || 0,
+          unit: existingConfig.unit || 'minutes',
+        };
+      case NodeType.CONDITIONAL_SPLIT:
+        return {
+          field: existingConfig.field || '',
+          operator: existingConfig.operator || 'equals',
+          value: existingConfig.value || '',
+        };
+      default:
+        return existingConfig;
+    }
+  };
+  
+  const [config, setConfig] = useState<Record<string, any>>(getInitialConfig());
 
   if (!node) return null;
-
-  const nodeType = node.data.type as NodeType;
 
   const renderConfigFields = () => {
     switch (nodeType) {
