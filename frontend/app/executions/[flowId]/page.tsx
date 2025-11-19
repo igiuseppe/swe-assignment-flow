@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { flowsApi } from '@/lib/api';
 import { Flow, Execution } from '@/lib/types';
+import FlowCanvas from '@/components/FlowCanvas';
 
 export default function ExecutionsPage({ params }: { params: Promise<{ flowId: string }> }) {
   const resolvedParams = use(params);
@@ -133,6 +134,39 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
       default:
         return 'bg-gray-50 border-gray-200';
     }
+  };
+
+  // Build execution state for FlowCanvas visualization
+  const buildExecutionState = (execution: Execution) => {
+    const nodeStatuses: Record<string, 'pending' | 'executing' | 'completed' | 'failed' | 'skipped'> = {};
+    const edgeStatuses: Record<string, 'active' | 'inactive'> = {};
+
+    // Map execution node statuses
+    execution.executedNodes.forEach((node) => {
+      if (node.status === 'running') {
+        nodeStatuses[node.nodeId] = 'executing';
+      } else if (node.status === 'completed') {
+        nodeStatuses[node.nodeId] = 'completed';
+      } else if (node.status === 'failed') {
+        nodeStatuses[node.nodeId] = 'failed';
+      }
+    });
+
+    // Mark active edges based on branches
+    if (execution.branches) {
+      execution.branches.forEach((branch) => {
+        // Mark path as active
+        branch.path.forEach((pathNode, index) => {
+          if (index < branch.path.length - 1) {
+            // Create edge ID from source->target (this is a simplification)
+            const edgeId = `${pathNode.nodeId}->${branch.path[index + 1].nodeId}`;
+            edgeStatuses[edgeId] = 'active';
+          }
+        });
+      });
+    }
+
+    return { nodeStatuses, edgeStatuses };
   };
 
   if (loading) {
@@ -298,7 +332,7 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
       {/* Execution Detail Modal */}
       {showDetailModal && selectedExecution && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-7xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h2 className="text-2xl font-bold">Execution Details</h2>
@@ -321,6 +355,24 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
                 </button>
               </div>
             </div>
+
+            {/* Flow Visualization */}
+            {flow && (
+              <div className="mb-6 bg-gray-50 rounded-lg border border-gray-200 p-4">
+                <h3 className="font-semibold mb-3 text-gray-700">Execution Flow Visualization</h3>
+                <div className="h-[500px] bg-white rounded border border-gray-300">
+                  <FlowCanvas
+                    initialNodes={flow.nodes}
+                    initialEdges={flow.edges}
+                    onNodesChange={() => {}}
+                    onEdgesChange={() => {}}
+                    triggerType={flow.triggerType}
+                    executionState={buildExecutionState(selectedExecution)}
+                    readOnly={true}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Status Overview */}
             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
@@ -433,7 +485,13 @@ export default function ExecutionsPage({ params }: { params: Promise<{ flowId: s
                       </div>
                       {branch.path.length > 0 && (
                         <div className="mt-1 text-xs text-gray-600">
-                          Path: {branch.path.join(' → ')}
+                          Path: {branch.path.map(p => {
+                            // Handle both old format (string) and new format (object)
+                            if (typeof p === 'string') {
+                              return p;
+                            }
+                            return `${p.nodeId} (${p.nodeType})`;
+                          }).join(' → ')}
                         </div>
                       )}
                     </div>

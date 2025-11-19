@@ -21,12 +21,19 @@ const nodeTypes = {
   custom: CustomNode,
 };
 
+interface ExecutionState {
+  nodeStatuses?: Record<string, 'pending' | 'executing' | 'completed' | 'failed' | 'skipped'>;
+  edgeStatuses?: Record<string, 'active' | 'inactive'>;
+}
+
 interface FlowCanvasProps {
   initialNodes: FlowNodeType[];
   initialEdges: FlowEdgeType[];
   onNodesChange: (nodes: FlowNodeType[]) => void;
   onEdgesChange: (edges: FlowEdgeType[]) => void;
   triggerType?: string;
+  executionState?: ExecutionState;
+  readOnly?: boolean;
 }
 
 function NodeConfigModal({ 
@@ -344,6 +351,8 @@ export default function FlowCanvas({
   onNodesChange,
   onEdgesChange,
   triggerType,
+  executionState,
+  readOnly = false,
 }: FlowCanvasProps) {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -364,6 +373,56 @@ export default function FlowCanvas({
     return nodes.map((node) => {
       const isSystemNode = node.type === NodeType.TRIGGER || node.type === NodeType.END;
       const isTrigger = node.type === NodeType.TRIGGER;
+      const status = executionState?.nodeStatuses?.[node.id];
+      
+      // Determine node style based on execution status
+      let className = '';
+      let style: any = {};
+      
+      if (status) {
+        switch (status) {
+          case 'executing':
+            className = 'animate-pulse';
+            style = { 
+              borderColor: '#3b82f6', 
+              borderWidth: 4, 
+              boxShadow: '0 0 25px rgba(59, 130, 246, 0.6), 0 0 10px rgba(59, 130, 246, 0.4)',
+              backgroundColor: '#eff6ff'
+            };
+            break;
+          case 'completed':
+            style = { 
+              borderColor: '#16a34a', 
+              borderWidth: 3, 
+              backgroundColor: '#f0fdf4',
+              boxShadow: '0 2px 8px rgba(22, 163, 74, 0.2)'
+            };
+            break;
+          case 'failed':
+            style = { 
+              borderColor: '#dc2626', 
+              borderWidth: 4, 
+              backgroundColor: '#fef2f2', 
+              boxShadow: '0 0 20px rgba(220, 38, 38, 0.5), 0 0 10px rgba(220, 38, 38, 0.3)'
+            };
+            break;
+          case 'skipped':
+            style = { 
+              borderColor: '#9ca3af', 
+              borderWidth: 2, 
+              backgroundColor: '#f9fafb', 
+              opacity: 0.5 
+            };
+            break;
+          case 'pending':
+            style = { 
+              borderColor: '#e5e7eb', 
+              borderWidth: 2,
+              opacity: 0.7
+            };
+            break;
+        }
+      }
       
       return {
         id: node.id,
@@ -374,7 +433,10 @@ export default function FlowCanvas({
           type: node.type,
           config: node.config,
           isSystemNode,
+          executionStatus: status,
         },
+        className,
+        style,
         draggable: true,
         deletable: false, // Prevent delete via backspace/delete key
       };
@@ -391,6 +453,35 @@ export default function FlowCanvas({
         label = '✗ False';
       }
       
+      const edgeStatus = executionState?.edgeStatuses?.[edge.id];
+      let style: any = {};
+      let animated = false;
+      
+      // Base style from conditional splits
+      if (edge.sourceHandle === 'true') {
+        style = { stroke: '#16a34a', strokeWidth: 2 };
+      } else if (edge.sourceHandle === 'false') {
+        style = { stroke: '#dc2626', strokeWidth: 2 };
+      }
+      
+      // Override with execution status
+      if (edgeStatus === 'active') {
+        style = { 
+          ...style, 
+          stroke: '#3b82f6', 
+          strokeWidth: 4,
+          strokeDasharray: '5,5'
+        };
+        animated = true;
+      } else if (edgeStatus === 'inactive') {
+        style = { 
+          ...style, 
+          stroke: '#d1d5db', 
+          strokeWidth: 1,
+          opacity: 0.3
+        };
+      }
+      
       return {
         id: edge.id,
         source: edge.source,
@@ -398,11 +489,8 @@ export default function FlowCanvas({
         sourceHandle: edge.sourceHandle,
         label,
         type: 'smoothstep',
-        style: edge.sourceHandle === 'true' 
-          ? { stroke: '#16a34a', strokeWidth: 2 }
-          : edge.sourceHandle === 'false'
-          ? { stroke: '#dc2626', strokeWidth: 2 }
-          : undefined,
+        style,
+        animated,
       };
     });
   };
@@ -440,6 +528,107 @@ export default function FlowCanvas({
       );
     }
   }, [triggerType, setNodes]);
+
+  // Update nodes and edges when execution state changes
+  useEffect(() => {
+    if (!executionState) return;
+
+    setNodes((nds) =>
+      nds.map((node) => {
+        const status = executionState.nodeStatuses?.[node.id];
+        if (!status) return node;
+
+        let className = '';
+        let style: any = {};
+
+        switch (status) {
+          case 'executing':
+            className = 'animate-pulse';
+            style = { 
+              borderColor: '#3b82f6', 
+              borderWidth: 4, 
+              boxShadow: '0 0 25px rgba(59, 130, 246, 0.6), 0 0 10px rgba(59, 130, 246, 0.4)',
+              backgroundColor: '#eff6ff'
+            };
+            break;
+          case 'completed':
+            style = { 
+              borderColor: '#16a34a', 
+              borderWidth: 3, 
+              backgroundColor: '#f0fdf4',
+              boxShadow: '0 2px 8px rgba(22, 163, 74, 0.2)'
+            };
+            break;
+          case 'failed':
+            style = { 
+              borderColor: '#dc2626', 
+              borderWidth: 4, 
+              backgroundColor: '#fef2f2', 
+              boxShadow: '0 0 20px rgba(220, 38, 38, 0.5), 0 0 10px rgba(220, 38, 38, 0.3)'
+            };
+            break;
+          case 'skipped':
+            style = { 
+              borderColor: '#9ca3af', 
+              borderWidth: 2, 
+              backgroundColor: '#f9fafb', 
+              opacity: 0.5 
+            };
+            break;
+          case 'pending':
+            style = { 
+              borderColor: '#e5e7eb', 
+              borderWidth: 2,
+              opacity: 0.7
+            };
+            break;
+        }
+
+        return {
+          ...node,
+          className,
+          style,
+          data: {
+            ...node.data,
+            executionStatus: status,
+          },
+        };
+      })
+    );
+
+    setEdges((eds) =>
+      eds.map((edge) => {
+        const edgeStatus = executionState.edgeStatuses?.[edge.id];
+        if (!edgeStatus) return edge;
+
+        let style: any = { ...edge.style };
+        let animated = false;
+
+        if (edgeStatus === 'active') {
+          style = {
+            ...style,
+            stroke: '#3b82f6',
+            strokeWidth: 4,
+            strokeDasharray: '5,5',
+          };
+          animated = true;
+        } else if (edgeStatus === 'inactive') {
+          style = {
+            ...style,
+            stroke: '#d1d5db',
+            strokeWidth: 1,
+            opacity: 0.3,
+          };
+        }
+
+        return {
+          ...edge,
+          style,
+          animated,
+        };
+      })
+    );
+  }, [executionState, setNodes, setEdges]);
 
   // Only reinitialize when initialNodes actually changes from outside (e.g., page reload)
   useEffect(() => {
@@ -593,13 +782,13 @@ export default function FlowCanvas({
   };
 
   const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
-    // Don't open config for system nodes (TRIGGER and END)
-    if (node.data.isSystemNode) {
+    // Don't open config in read-only mode or for system nodes
+    if (readOnly || node.data.isSystemNode) {
       return;
     }
     setSelectedNode(node);
     setShowConfigModal(true);
-  }, []);
+  }, [readOnly]);
 
   const handleConfigSave = useCallback((config: Record<string, any>) => {
     if (selectedNode) {
@@ -652,17 +841,21 @@ export default function FlowCanvas({
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={handleNodesChange}
-        onEdgesChange={handleEdgesChange}
-        onConnect={onConnect}
+        onNodesChange={readOnly ? undefined : handleNodesChange}
+        onEdgesChange={readOnly ? undefined : handleEdgesChange}
+        onConnect={readOnly ? undefined : onConnect}
         onNodeClick={handleNodeClick}
         nodeTypes={nodeTypes}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
+        elementsSelectable={!readOnly}
         fitView
       >
         <Background variant={BackgroundVariant.Dots} />
-        <Controls />
+        <Controls showInteractive={!readOnly} />
         
-        <Panel position="top-left" className="bg-white p-4 rounded-lg shadow-lg max-w-xs">
+        {!readOnly && (
+          <Panel position="top-left" className="bg-white p-4 rounded-lg shadow-lg max-w-xs">
           <h3 className="font-semibold mb-3">Add Nodes</h3>
           
           {/* ACTION Nodes */}
@@ -721,6 +914,43 @@ export default function FlowCanvas({
             <p className="mt-1">Press Delete/Backspace to remove selected edge</p>
           </div>
         </Panel>
+        )}
+
+        {executionState && (
+          <Panel position="top-right" className="bg-white p-4 rounded-lg shadow-lg">
+            <h3 className="font-bold mb-3 text-base">Execution Status</h3>
+            <div className="flex flex-col gap-2.5 text-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 rounded-full border-3 border-blue-500 bg-white flex items-center justify-center animate-pulse shadow-md" style={{ borderWidth: '3px' }}>
+                  <span className="text-xs">⚡</span>
+                </div>
+                <span className="font-medium">Executing</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 rounded-full border-2 border-green-600 bg-green-50 flex items-center justify-center shadow-sm">
+                  <span className="text-xs text-green-700">✓</span>
+                </div>
+                <span className="font-medium">Completed</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 rounded-full border-3 border-red-600 bg-red-50 flex items-center justify-center shadow-sm" style={{ borderWidth: '3px' }}>
+                  <span className="text-xs text-red-700">✗</span>
+                </div>
+                <span className="font-medium">Failed</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 rounded-full border border-gray-400 bg-gray-100 flex items-center justify-center opacity-70">
+                  <span className="text-xs text-gray-600">⊘</span>
+                </div>
+                <span className="font-medium">Skipped</span>
+              </div>
+              <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
+                <div className="w-8 h-1 bg-blue-500 rounded-full shadow-sm" style={{ background: 'linear-gradient(90deg, #3b82f6 50%, transparent 50%)', backgroundSize: '8px 100%' }}></div>
+                <span className="font-medium">Active Path</span>
+              </div>
+            </div>
+          </Panel>
+        )}
       </ReactFlow>
       
       {showConfigModal && (

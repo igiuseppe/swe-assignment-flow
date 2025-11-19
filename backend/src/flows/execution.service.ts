@@ -117,7 +117,7 @@ export class FlowExecutionService {
     for (const failedNode of nodesToRetry) {
       // Find which branch this node belongs to
       const branch = execution.branches.find(b => 
-        b.path.includes(failedNode.nodeId) || b.currentNodeId === failedNode.nodeId
+        b.path.some(p => p.nodeId === failedNode.nodeId) || b.currentNodeId === failedNode.nodeId
       );
       const branchId = branch?.branchId || 'root';
       
@@ -148,17 +148,24 @@ export class FlowExecutionService {
       );
     }
 
-    // Clean up old branch state to prevent duplicates on retry
-    // Remove all branches that will be recreated during retry execution
+    // Reset branches to clean state for retry
+    // Instead of deleting and recreating, just reset their status and path
     const branchesToReset = Array.from(nodesByBranch.keys());
-    await this.executionModel.updateOne(
-      { _id: executionId },
-      { 
-        $pull: { branches: { branchId: { $in: branchesToReset } } }
-      }
-    );
+    
+    for (const branchId of branchesToReset) {
+      await this.executionModel.updateOne(
+        { _id: executionId, 'branches.branchId': branchId },
+        {
+          $set: {
+            'branches.$.status': 'running',
+            'branches.$.path': [],
+            'branches.$.currentNodeId': 'retry'
+          }
+        }
+      );
+    }
 
-    this.logger.log(`Cleaned up ${branchesToReset.length} old branch(es) for fresh retry`);
+    this.logger.log(`Reset ${branchesToReset.length} branch(es) to running state for retry`);
 
     // Update execution status back to running and clear error details
     await this.executionModel.updateOne(
@@ -208,6 +215,15 @@ export class FlowExecutionService {
   ): Promise<void> {
     this.logger.log(`📍 Executing node: ${node.id} (${node.type}) [branch: ${branchId}]`);
 
+    // Update branch current node and add to path (for all nodes)
+    await this.executionModel.updateOne(
+      { _id: executionId, 'branches.branchId': branchId },
+      { 
+        $set: { 'branches.$.currentNodeId': node.id },
+        $push: { 'branches.$.path': { nodeId: node.id, nodeType: node.type } }
+      }
+    );
+
     // Special handling for END node - it needs to track multiple arrivals
     if (node.type === NodeType.END) {
       // First, mark THIS branch as completed
@@ -216,9 +232,7 @@ export class FlowExecutionService {
         {
           $set: {
             'branches.$.status': 'completed',
-            'branches.$.currentNodeId': node.id,
-          },
-          $push: { 'branches.$.path': node.id }
+          }
         }
       );
 
@@ -340,12 +354,17 @@ export class FlowExecutionService {
       if (nextEdges.length > 1) {
         this.logger.log(`   → Executing ${nextEdges.length} branches in parallel`);
         
-        // Create new branches
+        // Get parent branch's path to inherit
+        const execution = await this.executionModel.findById(executionId);
+        const parentBranch = execution?.branches.find(b => b.branchId === branchId);
+        const parentPath = parentBranch?.path || [];
+        
+        // Create new branches inheriting parent's path
         const newBranches = nextEdges.map((edge, i) => ({
           branchId: `${branchId}_${i}`,
           status: 'running',
           currentNodeId: edge.target,
-          path: [node.id],
+          path: [...parentPath], // Inherit parent's path
         }));
 
         // First, mark parent branch as completed (it has split into children)

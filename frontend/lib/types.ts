@@ -81,11 +81,16 @@ export interface CreateFlowDto {
   description?: string;
 }
 
+export interface PathNode {
+  nodeId: string;
+  nodeType: string;
+}
+
 export interface Branch {
   branchId: string;
   status: string;
   currentNodeId: string;
-  path: string[];
+  path: PathNode[];
 }
 
 export interface ExecutedNode {

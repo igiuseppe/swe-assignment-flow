@@ -5,11 +5,12 @@ import { Handle, Position, NodeProps } from '@xyflow/react';
 import { NodeType } from '@/lib/types';
 
 function CustomNode({ data }: NodeProps) {
-  const { label, type, isSystemNode, config } = data as { 
+  const { label, type, isSystemNode, config, executionStatus } = data as { 
     label: string; 
     type: NodeType | string; 
     isSystemNode?: boolean;
     config?: Record<string, any>;
+    executionStatus?: 'pending' | 'executing' | 'completed' | 'failed' | 'skipped';
   };
 
   const isTrigger = type === NodeType.TRIGGER || type === 'TRIGGER';
@@ -88,10 +89,32 @@ function CustomNode({ data }: NodeProps) {
     );
   };
 
+  const renderStatusBadge = () => {
+    if (!executionStatus) return null;
+    
+    const badgeConfig = {
+      executing: { emoji: '⚡', bg: 'bg-blue-500', text: 'text-white', ring: 'ring-4 ring-blue-200' },
+      completed: { emoji: '✓', bg: 'bg-green-500', text: 'text-white', ring: 'ring-2 ring-green-200' },
+      failed: { emoji: '✗', bg: 'bg-red-500', text: 'text-white', ring: 'ring-4 ring-red-200' },
+      skipped: { emoji: '⊘', bg: 'bg-gray-400', text: 'text-white', ring: 'ring-2 ring-gray-200' },
+      pending: { emoji: '○', bg: 'bg-gray-300', text: 'text-gray-600', ring: 'ring-2 ring-gray-100' },
+    };
+    
+    const config = badgeConfig[executionStatus];
+    
+    return (
+      <div className={`absolute top-[-10px] right-[-10px] w-8 h-8 rounded-full ${config.bg} ${config.text} ${config.ring} flex items-center justify-center text-base font-bold shadow-lg`}>
+        {config.emoji}
+      </div>
+    );
+  };
+
   return (
     <div
-      className={`px-4 py-2 rounded-lg border-2 ${getNodeColor(type)} text-white shadow-lg min-w-[150px] ${isSystemNode ? 'opacity-90' : ''} ${isConditional ? 'relative' : ''}`}
+      className={`px-4 py-2 rounded-lg border-2 ${getNodeColor(type)} text-white shadow-lg min-w-[150px] ${isSystemNode ? 'opacity-90' : ''} ${isConditional || executionStatus ? 'relative' : ''}`}
     >
+      {renderStatusBadge()}
+      
       {/* Trigger node has no target handle, End node has no source handle */}
       {!isTrigger && <Handle type="target" position={Position.Top} className="w-3 h-3" />}
       

@@ -4,6 +4,15 @@ import { Document, Types } from 'mongoose';
 export type ExecutionDocument = Execution & Document;
 
 @Schema({ _id: false })
+export class PathNode {
+  @Prop({ required: true })
+  nodeId: string;
+
+  @Prop({ required: true })
+  nodeType: string;
+}
+
+@Schema({ _id: false })
 export class Branch {
   @Prop({ required: true })
   branchId: string;
@@ -14,8 +23,8 @@ export class Branch {
   @Prop({ required: true })
   currentNodeId: string;
 
-  @Prop({ type: [String], default: [] })
-  path: string[];
+  @Prop({ type: [Object], default: [] })
+  path: PathNode[];
 }
 
 export const BranchSchema = SchemaFactory.createForClass(Branch);
