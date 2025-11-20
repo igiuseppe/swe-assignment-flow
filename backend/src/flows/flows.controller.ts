@@ -108,8 +108,8 @@ export class FlowsController {
         category: 'TIMING',
         position: { x: 250, y: 380 },
         config: {
-          duration: 1,
-          unit: 'hours',
+          duration: 10,
+          unit: 'seconds',
         },
       },
       {
