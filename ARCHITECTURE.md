@@ -68,7 +68,7 @@ WhatsApp Marketing Automation Flow Builder - a scalable flow execution system wi
 
 ---
 
-### 6. Parallel Execution: JavaScript Async vs BullMQ
+### 4. Parallel Execution: JavaScript Async vs BullMQ
 
 **Decision:** JavaScript `Promise.all()` for MVP
 
@@ -88,7 +88,7 @@ WhatsApp Marketing Automation Flow Builder - a scalable flow execution system wi
 
 ---
 
-### 7. Time Delays: BullMQ with Redis
+### 5. Time Delays: BullMQ with Redis
 
 **Decision:** BullMQ for time delays (not in-memory timers)
 
@@ -100,7 +100,7 @@ WhatsApp Marketing Automation Flow Builder - a scalable flow execution system wi
 
 ---
 
-### 8. Execution Schema: Single Document
+### 6. Execution Schema: Single Document
 
 **Decision:** Single `executions` collection (separate from `flows`)
 
@@ -130,7 +130,7 @@ WhatsApp Marketing Automation Flow Builder - a scalable flow execution system wi
 
 ---
 
-### 9. Branch Tracking with Unique IDs
+### 7. Branch Tracking with Unique IDs
 
 **Decision:** Each branch gets hierarchical ID (e.g., `root`, `root_0`, `root_0_1`)
 
@@ -141,7 +141,7 @@ WhatsApp Marketing Automation Flow Builder - a scalable flow execution system wi
 
 ---
 
-### 10. END Node Synchronization
+### 8. END Node Synchronization
 
 **Decision:** END node tracks arrival count to determine completion
 
@@ -159,7 +159,7 @@ await executionModel.updateOne(
 
 ---
 
-### 11. Idempotency for External APIs
+### 9. Idempotency for External APIs
 
 **Decision:** Generate `idempotencyKey` for every external action
 
@@ -172,7 +172,7 @@ await executionModel.updateOne(
 
 ---
 
-### 12. Error Handling & Retry
+### 10. Error Handling & Retry
 
 **Decision:** Manual retry only (no automatic retries)
 
@@ -190,7 +190,7 @@ await executionModel.updateOne(
 
 ---
 
-### 14. Write Frequency & Data Retention
+### 11. Write Frequency & Data Retention
 
 **Decision:** Write on every node execution, keep forever (for MVP)
 
@@ -202,19 +202,18 @@ await executionModel.updateOne(
 ```
 
 **Rationale:**
-- **Audit Trail:** Full execution history for debugging
+- **Audit:** Full execution history for debugging
 - **Real-Time Monitoring:** Frontend polls and shows live progress
-- **Trade-off:** Write amplification vs observability (observability wins for MVP)
 
 **Production Optimization:**
 - Batch writes where possible
 - Implement TTL indexes: `{ createdAt: 1 }, { expireAfterSeconds: 7776000 }` (90 days)
 - Archive to S3/Data Lake for long-term analytics
-- avoid polling to check realtime in case of delay nodes
+- Avoid polling to check realtime in case of delay nodes
 
 ---
 
-### 15. Resume After Delay
+### 12. Resume After Delay
 
 **Decision:** Save `resumeData` info in delayed branches
 
@@ -229,7 +228,7 @@ const { nextNodeIds, context, branchId } = job.data;
 
 ---
 
-### 16. Manual Trigger Execution
+### 13. Manual Trigger Execution
 
 **Decision:** Synchronous API call that fires all active flows in parallel
 
@@ -246,7 +245,7 @@ const { nextNodeIds, context, branchId } = job.data;
 
 ---
 
-### 17. Analytics & Execution History
+### 14. Analytics & Execution History
 
 **Decision:** Build dedicated executions page with real-time monitoring
 
