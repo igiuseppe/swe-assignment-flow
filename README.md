@@ -2,6 +2,10 @@
 
 A scalable flow automation system enabling visual workflow creation with conditional logic, time delays, and parallel execution.
 
+## Demo
+
+Watch the live demo: [https://www.loom.com/share/41e036f912ef435fa448fc49947766e6](https://www.loom.com/share/41e036f912ef435fa448fc49947766e6)
+
 ## Prerequisites
 
 - Node.js 20+
