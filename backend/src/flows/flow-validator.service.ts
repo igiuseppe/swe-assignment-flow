@@ -28,7 +28,7 @@ export class FlowValidatorService {
           errors.push(`Node ${node.id} (SEND_MESSAGE): message is required and must be a non-empty string`);
         } else {
           // Validate variable placeholders
-          const placeholders = message.match(/\{[^}]+\}/g) || [];
+          const placeholders: string[] = message.match(/\{[^}]+\}/g) || [];
           const declaredVars = (variables || '').split(',').map((v: string) => v.trim()).filter(Boolean);
           
           // Check if all placeholders are declared (optional warning-level validation)
