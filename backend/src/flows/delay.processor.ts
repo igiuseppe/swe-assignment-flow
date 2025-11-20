@@ -37,14 +37,30 @@ export class DelayProcessor {
         return;
       }
 
-      // Update status back to running
+      // Mark branch as running and clear resumeData
       await this.executionModel.updateOne(
-        { _id: executionId },
+        { _id: executionId, 'branches.branchId': branchId },
         {
-          status: 'running',
-          $unset: { resumeAt: '', resumeData: '' },
+          $set: { 'branches.$.status': 'running' },
+          $unset: { 'branches.$.resumeData': '' },
         },
       );
+
+      // Check if any other branches are still delayed
+      const updatedExec = await this.executionModel.findById(executionId);
+      const hasDelayedBranches = updatedExec?.branches.some(b => b.status === 'delayed');
+      
+      if (!hasDelayedBranches) {
+        // No more delayed branches, mark execution as running and clear resumeAt
+        await this.executionModel.updateOne(
+          { _id: executionId },
+          {
+            $set: { status: 'running' },
+            $unset: { resumeAt: '' },
+          },
+        );
+      }
+      // else: keep execution as 'delayed' since other branches are still waiting
 
       // Continue execution from next nodes
       // If multiple next nodes, create sub-branches

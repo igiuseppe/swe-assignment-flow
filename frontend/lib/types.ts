@@ -91,6 +91,10 @@ export interface Branch {
   status: string;
   currentNodeId: string;
   path: PathNode[];
+  resumeData?: {
+    nextNodeIds: string[];
+    context: Record<string, any>;
+  };
 }
 
 export interface ExecutedNode {
@@ -115,11 +119,6 @@ export interface Execution {
   branches: Branch[];
   executedNodes: ExecutedNode[];
   resumeAt?: string;
-  resumeData?: {
-    nextNodeIds: string[];
-    context: Record<string, any>;
-    branchId: string;
-  };
   error?: string;
   errorDetails?: {
     failedBranches: string[];

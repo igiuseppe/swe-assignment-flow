@@ -25,6 +25,12 @@ export class Branch {
 
   @Prop({ type: [Object], default: [] })
   path: PathNode[];
+
+  @Prop({ type: Object })
+  resumeData?: {
+    nextNodeIds: string[];
+    context: Record<string, any>;
+  };
 }
 
 export const BranchSchema = SchemaFactory.createForClass(Branch);
@@ -59,7 +65,7 @@ export class ExecutedNode {
   retryCount: number;
 
   @Prop({ default: 0 })
-  arrivalCount: number;
+  arrivalCount: number; //no need anymore
 }
 
 export const ExecutedNodeSchema = SchemaFactory.createForClass(ExecutedNode);
@@ -89,13 +95,6 @@ export class Execution {
 
   @Prop()
   resumeAt?: Date;
-
-  @Prop({ type: Object })
-  resumeData?: {
-    nextNodeIds: string[];
-    context: Record<string, any>;
-    branchId: string;
-  };
 
   @Prop()
   error?: string;

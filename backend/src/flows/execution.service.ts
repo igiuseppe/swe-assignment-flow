@@ -69,6 +69,7 @@ export class FlowExecutionService {
     }
   }
 
+  //just a wrapper for executeNode, for naming clarity... cursor I hate you
   async continueNode(
     node: FlowNode,
     flow: Flow,
@@ -216,6 +217,7 @@ export class FlowExecutionService {
     this.logger.log(`📍 Executing node: ${node.id} (${node.type}) [branch: ${branchId}]`);
 
     // Update branch current node and add to path (for all nodes)
+    //atomic update of the branch
     await this.executionModel.updateOne(
       { _id: executionId, 'branches.branchId': branchId },
       { 
@@ -279,6 +281,8 @@ export class FlowExecutionService {
       _id: executionId,
       'executedNodes.nodeId': node.id,
     });
+
+    // check for already executed node
 
     if (existing) {
       const nodeExec = existing.executedNodes.find(n => n.nodeId === node.id);
@@ -379,7 +383,7 @@ export class FlowExecutionService {
           { $push: { branches: { $each: newBranches } } }
         );
       }
-
+      //if multiple children then nextbranch is new branch, otherwise same branch
       const nextNodePromises = nextEdges.map((edge, i) => {
         const nextNode = flow.nodes.find((n) => n.id === edge.target);
         if (nextNode) {
@@ -392,7 +396,7 @@ export class FlowExecutionService {
       // Execute all branches in parallel
       await Promise.all(nextNodePromises);
 
-      //not needed cause we validate flow at the start
+      //not needed cause we validate flow at the start but anyway...
       // Handle dead-end branches (no outgoing edges)
       // At this point, node type is one of: TRIGGER, SEND_MESSAGE, ADD_ORDER_NOTE, ADD_CUSTOMER_NOTE
       // (TIME_DELAY, CONDITIONAL_SPLIT, and END return early)
@@ -597,21 +601,32 @@ export class FlowExecutionService {
       .filter((e) => e.source === node.id)
       .map((e) => e.target);
 
-    // Save delay state
+    // Save delay state in the branch and mark it as delayed
     await this.executionModel.updateOne(
-      { _id: executionId },
+      { _id: executionId, 'branches.branchId': branchId },
       {
-        status: 'delayed',
-        resumeAt: new Date(Date.now() + delayMs),
-        resumeData: {
-          nextNodeIds,
-          context: data,
-          branchId,
+        $set: {
+          'branches.$.status': 'delayed',
+          'branches.$.resumeData': {
+            nextNodeIds,
+            context: data,
+          },
         },
       },
     );
 
-    // Mark delay node as completed
+    // Mark execution as delayed and set resumeAt to earliest delayed branch
+    await this.executionModel.updateOne(
+      { _id: executionId },
+      {
+        $set: {
+          status: 'delayed',
+          resumeAt: new Date(Date.now() + delayMs),
+        },
+      },
+    );
+
+    // Mark delay node as completed for simplicity
     await this.executionModel.updateOne(
       { _id: executionId, 'executedNodes.nodeId': node.id },
       {
@@ -762,7 +777,7 @@ export class FlowExecutionService {
   ): Promise<any> {
     this.logger.log(`🏁 END: Branch ${branchId} reached end node`);
 
-    // Atomically increment arrival counter
+    // Atomically increment arrival counter. outdated!
     const result = await this.executionModel.findOneAndUpdate(
       { _id: executionId, 'executedNodes.nodeId': node.id },
       {
@@ -779,15 +794,17 @@ export class FlowExecutionService {
     const endNodeExec = result.executedNodes.find(n => n.nodeId === node.id);
     const arrivalCount = endNodeExec?.arrivalCount || 1;
 
-    // Count total branches, completed, and failed branches
+    // Count total branches, completed, failed, and delayed branches
     const totalBranches = result.branches.length;
     const completedBranches = result.branches.filter(b => b.status === 'completed').length;
     const failedBranches = result.branches.filter(b => b.status === 'failed').length;
+    const delayedBranches = result.branches.filter(b => b.status === 'delayed').length;
     const finishedBranches = completedBranches + failedBranches;
 
-    this.logger.log(`   Arrivals: ${arrivalCount} | Branches: ${completedBranches}/${totalBranches} completed, ${failedBranches} failed`);
+    this.logger.log(`   Arrivals: ${arrivalCount} | Branches: ${completedBranches}/${totalBranches} completed, ${failedBranches} failed, ${delayedBranches} delayed`);
 
-    // Mark flow as completed/failed when ALL branches are finished (completed or failed)
+    // Mark flow as completed/failed when ALL non-delayed branches are finished
+    // Delayed branches will eventually resume and reach the end
     if (finishedBranches === totalBranches) {
       // Check if execution already marked as failed (from a failed node)
       if (result.status === 'failed') {
